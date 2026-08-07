@@ -1,0 +1,22 @@
+# Azure Functions
+azure-functions-durable>=1.2.9
+azure-functions>=1.21.3
+
+# Azure AI Services
+azure-ai-documentintelligence>=1.0.0
+openai>=1.40.0
+
+# Azure Identity & Graph
+azure-identity>=1.17.0
+msgraph-sdk>=1.5.0
+
+# Data validation
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# Prompt templating
+Jinja2>=3.1.4
+
+# Configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
