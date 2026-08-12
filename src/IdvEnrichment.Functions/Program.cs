@@ -1,6 +1,9 @@
 using Azure.AI.DocumentIntelligence;
+using Azure.AI.OpenAI;
+using Azure.Core;
 using Azure.Identity;
 using IdvEnrichment.Functions.Configuration;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,6 +25,8 @@ var host = new HostBuilder()
 
         var credential = new DefaultAzureCredential();
 
+        services.AddSingleton<TokenCredential>(_ => credential);
+
         services.AddSingleton(_ => new GraphServiceClient(credential));
 
         services.AddSingleton(sp =>
@@ -30,6 +35,14 @@ var host = new HostBuilder()
             return new DocumentIntelligenceClient(
                 new Uri(settings.DocIntelligenceEndpoint), credential);
         });
+
+        services.AddSingleton(sp =>
+        {
+            var settings = sp.GetRequiredService<IOptions<PipelineSettings>>().Value;
+            return new AzureOpenAIClient(new Uri(settings.OpenAiEndpoint), credential);
+        });
+
+        services.AddSingleton<TaxonomyLoader>();
     })
     .Build();
 

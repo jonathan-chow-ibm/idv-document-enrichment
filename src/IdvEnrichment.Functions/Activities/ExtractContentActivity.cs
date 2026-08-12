@@ -2,6 +2,7 @@ using Azure;
 using Azure.AI.DocumentIntelligence;
 using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
+using PipelineDocumentField = IdvEnrichment.Functions.Models.DocumentField;
 
 namespace IdvEnrichment.Functions.Activities;
 
@@ -14,7 +15,7 @@ public sealed class ExtractContentActivity(DocumentIntelligenceClient docIntelCl
     {
         var options = new AnalyzeDocumentOptions("prebuilt-layout", new Uri(input.DocumentUrl))
         {
-            OutputContentFormat = ContentFormat.Markdown,
+            OutputContentFormat = DocumentContentFormat.Markdown,
         };
 
         var operation = await docIntelClient.AnalyzeDocumentAsync(
@@ -36,7 +37,7 @@ public sealed class ExtractContentActivity(DocumentIntelligenceClient docIntelCl
             Language: language);
     }
 
-    private static IReadOnlyList<DocumentField> ExtractKeyValuePairs(AnalyzeResult result)
+    private static IReadOnlyList<PipelineDocumentField> ExtractKeyValuePairs(AnalyzeResult result)
     {
         if (result.KeyValuePairs is not { Count: > 0 })
         {
@@ -45,7 +46,7 @@ public sealed class ExtractContentActivity(DocumentIntelligenceClient docIntelCl
 
         return result.KeyValuePairs
             .Where(kv => kv.Key?.Content is not null)
-            .Select(kv => new DocumentField(
+            .Select(kv => new PipelineDocumentField(
                 Key: kv.Key.Content,
                 Value: kv.Value?.Content ?? string.Empty,
                 Confidence: kv.Confidence))

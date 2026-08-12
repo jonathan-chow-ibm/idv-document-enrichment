@@ -1,0 +1,14 @@
+Process the following document.
+
+**File name:** {{fileName}}
+
+{{#if keyValuePairs}}
+**Extracted key-value pairs:**
+{{#each keyValuePairs}}
+- {{this.key}}: {{this.value}} (confidence: {{this.confidence}})
+{{/each}}
+{{/if}}
+
+**Document text ({{textLength}} characters):**
+
+{{extractedText}}
