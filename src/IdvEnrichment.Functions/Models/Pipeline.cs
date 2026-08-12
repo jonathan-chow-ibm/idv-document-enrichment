@@ -41,7 +41,7 @@ public sealed record QueueMessage(
     [property: JsonPropertyName("fileName")] string FileName,
     [property: JsonPropertyName("fileUrl")] string FileUrl,
     [property: JsonPropertyName("contentType")] string ContentType,
-    [property: JsonPropertyName("modifiedDateTime")] string ModifiedDateTime,
+    [property: JsonPropertyName("modifiedDateTime")] DateTimeOffset ModifiedDateTime,
     [property: JsonPropertyName("source")] ProcessingSource Source,
     [property: JsonPropertyName("batchId")] string? BatchId = null,
     [property: JsonPropertyName("attemptNumber")] int AttemptNumber = 1);
@@ -66,9 +66,10 @@ public sealed record LibraryDocument(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("downloadUrl")] string DownloadUrl,
     [property: JsonPropertyName("mimeType")] string MimeType,
-    [property: JsonPropertyName("lastModifiedDateTime")] string LastModifiedDateTime);
+    [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset LastModifiedDateTime);
 
-public sealed record KeyValuePair(
+/// <summary>A key-value pair extracted from a document by Document Intelligence.</summary>
+public sealed record DocumentField(
     [property: JsonPropertyName("key")] string Key,
     [property: JsonPropertyName("value")] string Value,
     [property: JsonPropertyName("confidence")] double Confidence);
@@ -78,25 +79,25 @@ public sealed record ExtractionResult(
     [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("pageCount")] int PageCount,
     [property: JsonPropertyName("textLength")] int TextLength,
-    [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<KeyValuePair> KeyValuePairs,
+    [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs,
     [property: JsonPropertyName("language")] string Language = "unknown");
 
 // --- Activity Inputs/Outputs ---
 
-public sealed record ExtractContentInput(string DocumentUrl, string ContentType);
+public sealed record ExtractContentInput(string DocumentUrl);
 
 public sealed record ClassifyTypeInput(
     string DocumentId,
     string FileName,
     string ExtractedText,
-    IReadOnlyList<KeyValuePair> KeyValuePairs);
+    IReadOnlyList<DocumentField> KeyValuePairs);
 
 public sealed record ExtractMetadataInput(
     string DocumentId,
     string FileName,
     DocumentType DocumentType,
     string ExtractedText,
-    IReadOnlyList<KeyValuePair> KeyValuePairs);
+    IReadOnlyList<DocumentField> KeyValuePairs);
 
 public sealed record RouteResultInput(
     QueueMessage Message,

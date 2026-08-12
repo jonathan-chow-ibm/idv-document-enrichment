@@ -7,6 +7,7 @@ public sealed class PipelineSettings
 {
     // Agent 1 (classification) uses mini; Agent 2 (extraction) uses full GPT-4o
     [Required]
+    [Url]
     public string OpenAiEndpoint { get; init; } = string.Empty;
 
     public string OpenAiDeployment { get; init; } = "gpt-4o";
@@ -16,8 +17,10 @@ public sealed class PipelineSettings
     public string OpenAiApiVersion { get; init; } = "2024-12-01-preview";
 
     [Required]
+    [Url]
     public string DocIntelligenceEndpoint { get; init; } = string.Empty;
 
+    [Required]
     public string TaxonomyBlobUrl { get; init; } = string.Empty;
 
     [Range(0.0, 1.0)]
