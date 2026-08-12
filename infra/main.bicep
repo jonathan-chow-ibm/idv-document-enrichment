@@ -150,18 +150,17 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   properties: {
     serverFarmId: hostingPlan.id
     siteConfig: {
-      pythonVersion: '3.11'
-      linuxFxVersion: 'PYTHON|3.11'
+      linuxFxVersion: 'DOTNET-ISOLATED|10.0'
       appSettings: [
-        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
+        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'dotnet-isolated' }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}' }
         { name: 'APPINSIGHTS_INSTRUMENTATIONKEY', value: appInsights.properties.InstrumentationKey }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
-        { name: 'AZURE_OPENAI_ENDPOINT', value: openAi.properties.endpoint }
-        { name: 'AZURE_OPENAI_DEPLOYMENT', value: openAiDeploymentName }
-        { name: 'AZURE_OPENAI_MINI_DEPLOYMENT', value: openAiMiniDeploymentName }
-        { name: 'AZURE_DOC_INTELLIGENCE_ENDPOINT', value: docIntelligence.properties.endpoint }
+        { name: 'OpenAiEndpoint', value: openAi.properties.endpoint }
+        { name: 'OpenAiDeployment', value: openAiDeploymentName }
+        { name: 'OpenAiMiniDeployment', value: openAiMiniDeploymentName }
+        { name: 'DocIntelligenceEndpoint', value: docIntelligence.properties.endpoint }
       ]
     }
   }

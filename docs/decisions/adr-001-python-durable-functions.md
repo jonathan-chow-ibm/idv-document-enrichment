@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-005](adr-005-net-isolated-worker.md) (2026-08-10)
 
 ## Date
 

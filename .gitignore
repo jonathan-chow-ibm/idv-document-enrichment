@@ -1,17 +1,22 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environments
-.venv/
-venv/
-ENV/
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+.vs/
 
 # Azure Functions
 local.settings.json
-.python_packages/
 .funcignore
+Properties/launchSettings.json
 
 # IDE
 .vscode/
@@ -23,17 +28,28 @@ local.settings.json
 .DS_Store
 Thumbs.db
 
-# Distribution / packaging
-dist/
-build/
-*.egg-info/
-
 # Testing
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
+[Tt]est[Rr]esult*/
+coverage/
+*.trx
+*.coverage
+*.coveragexml
 
 # Environment
 .env
 .env.local
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Python (evaluation harness only — tests/evaluation/)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+

@@ -8,7 +8,7 @@ Automated document enrichment pipeline that classifies, tags, and indexes active
 
 - **Azure AI Document Intelligence** — text and key-value extraction from documents
 - **Azure OpenAI (GPT-family)** — classification and tag generation against an approved taxonomy
-- **Azure Functions (Durable)** — orchestration engine with retry, checkpointing, and fan-out/fan-in
+- **Azure Functions (.NET 10 isolated worker) with Durable Task extension** — orchestration engine with retry, checkpointing, and fan-out/fan-in
 - **Power Automate Premium** — event triggers (create/modify/move) and metadata write-back
 - **SharePoint Online** — source documents and metadata column write-back target
 
@@ -26,41 +26,39 @@ See [docs/architecture/](docs/architecture/) for detailed architecture documenta
 
 ```
 idv-document-enrichment/
+├── IdvEnrichment.sln
 ├── docs/
 │   ├── architecture/          # Deep-dive architecture documents
-│   ├── decisions/             # Architecture Decision Records (ADRs)
-│   ├── runbooks/              # Operational runbooks
-│   └── taxonomy/              # Taxonomy specification and examples
-├── infra/                     # Bicep IaC for Azure resources
+│   └── decisions/             # ADRs
+├── infra/                     # Bicep IaC
 │   ├── main.bicep
-│   ├── main.bicepparam
-│   └── modules/
+│   └── main.bicepparam
 ├── src/
-│   └── functions/             # Azure Functions (Python v2)
-│       ├── function_app.py
-│       ├── orchestrators/     # Durable Functions orchestrators
-│       ├── activities/        # Durable Functions activities
-│       ├── models/            # Pydantic models for taxonomy, metadata
-│       ├── prompts/           # Prompt templates (Jinja2 or plain text)
-│       └── shared/            # Shared utilities, clients, config
+│   └── IdvEnrichment.Functions/       # .NET 10 Azure Functions isolated worker
+│       ├── IdvEnrichment.Functions.csproj
+│       ├── Program.cs
+│       ├── host.json
+│       ├── local.settings.json        # gitignored
+│       ├── Configuration/             # IOptions bindings
+│       ├── Models/                    # Data contracts (C# records)
+│       ├── Orchestrators/             # Durable orchestrators
+│       ├── Activities/                # Durable activities
+│       ├── Prompts/                   # Handlebars templates (per document type)
+│       └── Shared/                    # Shared services and utilities
 ├── tests/
-│   ├── unit/                  # Unit tests
-│   ├── integration/           # Integration tests
-│   └── evaluation/            # Prompt evaluation / accuracy tests
-├── scripts/                   # Utility scripts (batch kick-off, reporting)
-├── .github/
-│   └── workflows/             # CI/CD pipelines
-├── host.json                  # Azure Functions host configuration
-├── local.settings.json        # Local development settings (gitignored)
-├── requirements.txt           # Python dependencies
-└── pyproject.toml             # Project configuration
+│   ├── IdvEnrichment.UnitTests/        # xUnit unit tests
+│   ├── IdvEnrichment.IntegrationTests/ # xUnit + Aspire integration tests
+│   └── evaluation/                     # Python + Jupyter prompt evaluation harness
+├── .github/workflows/
+├── .editorconfig
+└── .gitignore
 ```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.11+
+- .NET 10 SDK
 - Azure Functions Core Tools v4
 - Azure CLI
 - An Azure subscription with:
@@ -72,13 +70,11 @@ idv-document-enrichment/
 ### Local Development
 
 ```bash
-# Clone and setup
-cd idv-document-enrichment
-python -m venv .venv
-.venv\Scripts\activate       # Windows
-pip install -r requirements.txt
+# Restore and build
+dotnet restore
 
 # Configure local settings
+cd src/IdvEnrichment.Functions
 cp local.settings.example.json local.settings.json
 # Edit local.settings.json with your Azure resource connection strings
 

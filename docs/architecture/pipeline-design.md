@@ -7,13 +7,11 @@ graph TB
     subgraph SharePoint["SharePoint Online"]
         DocLib["Document Libraries<br/>(Active Project Files)"]
         MetaCols["Metadata Columns<br/>(Deal Type, Submarket, etc.)"]
-        ReviewList["Human Review Queue<br/>(SharePoint List)"]
     end
 
     subgraph PowerAutomate["Power Automate Premium"]
         TriggerFlow["Trigger Flow<br/>(on create/modify/move)"]
         WriteBackFlow["Write-Back Flow<br/>(metadata → columns)"]
-        ReviewApprovalFlow["Review Approval Flow<br/>(approved → write-back)"]
     end
 
     subgraph AzureFunctions["Azure Functions (Durable)"]
@@ -76,15 +74,10 @@ graph TB
     Orchestrator --> RouteActivity
 
     %% Output Routing
-    RouteActivity -->|"high confidence"| WriteBackFlow
-    RouteActivity -->|"high confidence (batch)"| WriteBackActivity
+    RouteActivity -->|"all docs"| WriteBackFlow
+    RouteActivity -->|"all docs (batch)"| WriteBackActivity
     WriteBackFlow -->|"update columns"| MetaCols
     WriteBackActivity -->|"Graph API batch update"| MetaCols
-    RouteActivity -->|"low confidence"| ReviewList
-
-    %% Human Review Loop
-    ReviewList -->|"SME reviews"| ReviewApprovalFlow
-    ReviewApprovalFlow -->|"approved tags"| MetaCols
 
     %% Observability
     Orchestrator -->|"traces, metrics"| AppInsights
@@ -108,9 +101,9 @@ graph TB
 | `extract_content` | Durable Activity | Calls Azure AI Document Intelligence Read API, polls for result, returns normalized text + key-value pairs |
 | `classify_type` | Durable Activity | **Agent 1 (Classifier).** Calls GPT-4o-mini, returns DocumentType + confidence + reasoning. Cheap, fast first pass to determine document type |
 | `extract_metadata` | Durable Activity | **Agent 2 (Extractor).** Loads type-specific prompt template + taxonomy based on Agent 1's output, calls GPT-4o with Structured Outputs, returns common fields + type-specific fields + suggested additional fields |
-| `route_result` | Durable Activity | Evaluates confidence on both type classification (Agent 1) and per-field extraction (Agent 2), routes to write-back (high confidence) or human review queue (low confidence) |
+| `route_result` | Durable Activity | Evaluates confidence on both type classification (Agent 1) and per-field extraction (Agent 2) against taxonomy thresholds, sets AIProcessingStatus to "Classified" or "Under Review" |
 | `write_metadata` | Durable Activity | Writes classification metadata to SharePoint columns via Microsoft Graph API (used in batch mode) |
-| `generate_batch_report` | Durable Activity | Produces batch-tagging results report (coverage, confidence distribution, review queue metrics) |
+| `generate_batch_report` | Durable Activity | Produces batch-tagging results report (coverage, confidence distribution, under-review count, cost breakdown) |
 
 ### Power Automate Premium — Glue Layer
 
@@ -118,7 +111,6 @@ graph TB
 |------|---------|---------------|
 | `Document-Created-Modified` | SharePoint: When a file is created or modified | Detects new/modified documents, calls HTTP trigger on Azure Function with document URL and metadata |
 | `Write-Back-Metadata` | HTTP request (called by Azure Function) | Receives classified metadata from Azure Function, writes to SharePoint list item columns |
-| `Review-Approved` | SharePoint: When an item is modified (review list) | Detects when reviewer approves/corrects an item, writes final tags to document's SharePoint columns |
 
 ### Azure AI Document Intelligence
 
@@ -147,6 +139,8 @@ graph TB
 - **Output:** Common fields (deal type, submarket, counterparty, confidentiality) + type-specific fields + suggested additional fields, each with per-field confidence and reasoning
 - **Rate limit:** Varies by deployment (request TPM increase for batch)
 - **Schema:** Different JSON schema per document type, enforced by Structured Outputs (eliminates parse failures)
+- **Skip condition:** Not invoked for "Other" type or when Agent 1 confidence is below threshold (routes directly to review)
+- **Cost note:** Two calls per document (Agent 1 + Agent 2) costs roughly the same as the original single-prompt GPT-4o approach. The value is richer type-specific metadata, not cost reduction. Cost reduction comes from GPT-4o-mini validation in Phase 5 and potential Batch API adoption.
 
 ## 3. Data Contracts
 
@@ -201,29 +195,9 @@ graph TB
 }
 ```
 
-### Human Review Queue Item (SharePoint List)
+### Inline Review (Low-Confidence Documents)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| Title | Text | File name |
-| DocumentLink | URL | Link to original document in SharePoint |
-| DocumentId | Text | SharePoint item ID |
-| DocumentType | Choice | Agent 1 classified document type |
-| TypeConfidence | Number | Agent 1 type classification confidence |
-| ProposedDealType | Choice | AI-proposed deal type |
-| ProposedSubmarket | Choice | AI-proposed submarket |
-| ProposedCounterparty | Text | AI-proposed counterparty |
-| ProposedConfidentiality | Choice | AI-proposed confidentiality level |
-| TypeSpecificFields | Multi-line text | JSON of type-specific extracted fields with per-field confidence |
-| SuggestedFields | Multi-line text | JSON of AI-suggested additional fields |
-| ConfidenceScores | Multi-line text | JSON of per-field confidence scores |
-| LowConfidenceFields | Multi-line text | Fields that triggered review |
-| AIReasoning | Multi-line text | AI's reasoning for type classification and each extracted field |
-| ReviewStatus | Choice | Pending / Approved / Corrected / Rejected |
-| ReviewedBy | Person | SME who reviewed |
-| ReviewedDate | DateTime | When reviewed |
-| CorrectionNotes | Multi-line text | What was changed and why (for prompt tuning) |
-| BatchId | Text | Batch ID if from batch processing |
+Low-confidence documents receive the same metadata columns as high-confidence documents, with `AIProcessingStatus = "Under Review"`. SMEs review via a filtered library view. See [ADR-006](../decisions/adr-006-inline-review.md).
 
 ## 4. Error Handling & Retry Strategy
 
@@ -282,7 +256,7 @@ flowchart TD
 | `documents.classification.confidence` | Histogram | Agent 1 type classification confidence |
 | `documents.metadata.field.confidence` | Histogram | Agent 2 per-field extraction confidence |
 | `documents.metadata.suggested_fields.count` | Counter | Number of suggested additional fields discovered by Agent 2 |
-| `documents.review.queue.depth` | Gauge | Current human review queue depth |
+| `documents.under_review.count` | Gauge | Documents with AIProcessingStatus = "Under Review" |
 | `documents.batch.progress` | Gauge | Batch completion percentage |
 | `documents.cost.extraction` | Counter | Estimated Document Intelligence cost |
 | `documents.cost.classification` | Counter | Estimated GPT-4o-mini token cost (Agent 1) |
@@ -293,7 +267,7 @@ flowchart TD
 | Alert | Condition | Severity | Action |
 |-------|-----------|----------|--------|
 | High failure rate | >10% failures in 15 min window | Critical | Page on-call |
-| Review queue growing | Queue depth >100 items | Warning | Notify SME team |
+| Under review growing | Docs with AIProcessingStatus="Under Review" >100 | Warning | Notify SME team; consider adjusting thresholds |
 | Rate limit sustained | >5 min of continuous 429s | Warning | Reduce concurrency |
 | Batch stalled | No progress for >30 min | Critical | Investigate |
 | Cost threshold | Daily spend >$200 | Warning | Review and potentially pause |

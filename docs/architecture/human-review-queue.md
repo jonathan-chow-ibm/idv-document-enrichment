@@ -1,6 +1,8 @@
 # Human Review Queue — Deep Dive
 
-## 1. Purpose
+> **⚠️ SUPERSEDED by [ADR-006](../decisions/adr-006-inline-review.md).** This document describes the original separate-list review queue design. The implemented architecture uses inline review via a filtered SharePoint library view — no separate list, no Power Apps form, no approval flow. Retained for historical reference only.
+
+## 1. Purpose (Original Design)
 
 The human review queue is the **quality gate** between AI classification and production metadata. It serves three functions:
 
@@ -206,7 +208,9 @@ Corrections fall into four categories, each feeding back to a different part of 
 ### Using Corrections for Prompt Tuning
 
 ```python
-# scripts/analyze_corrections.py
+# Correction analysis runs in the Python evaluation harness (tests/evaluation/) — see ADR-005
+# tests/evaluation/analyze_corrections.py
+# Corrections are detected by diffing current column values against AIOriginalClassification JSON.
 
 """Analyze correction patterns to inform prompt tuning iterations."""
 

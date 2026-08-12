@@ -19,21 +19,21 @@ This separation allows:
 
 ### Agent 1: Classification Prompt Template
 
-**File:** `prompts/classify_type.j2` · **Model:** GPT-4o-mini · **Output:** JSON mode
+**File:** `Prompts/ClassifyType.hbs` · **Model:** GPT-4o-mini · **Output:** JSON mode
 
 Agent 1 is deliberately simple — it determines the document type so Agent 2 can apply the correct extraction schema.
 
-```jinja2
-{# prompts/classify_type.j2 #}
+```handlebars
+{{!-- Prompts/ClassifyType.hbs --}}
 
 You are a document type classifier for a commercial real estate investment firm.
 Your task is to classify the document into exactly one of the following types.
 
 ## Document Types
 
-{% for doc_type in document_types %}
-- **{{ doc_type.label }}**: {{ doc_type.description }}
-{% endfor %}
+{{#each documentTypes}}
+- **{{this.label}}**: {{this.description}}
+{{/each}}
 
 ## Instructions
 
@@ -57,17 +57,17 @@ Respond with a JSON object:
 
 ### Agent 2: Extraction Prompt Templates
 
-**Files:** `prompts/extract_{type}.j2` (one per document type) · **Model:** GPT-4o · **Output:** Structured Outputs (JSON Schema per type)
+**Files:** `Prompts/Extract{Type}.hbs` (one per document type) · **Model:** GPT-4o · **Output:** Structured Outputs (JSON Schema per type)
 
 Agent 2 receives the classified document type from Agent 1 and extracts both common metadata fields and type-specific fields.
 
 #### Common structure across all extraction templates
 
-```jinja2
-{# prompts/extract_{type}.j2 — common skeleton #}
+```handlebars
+{{!-- Prompts/Extract{Type}.hbs — common skeleton --}}
 
 You are a metadata extraction specialist for a commercial real estate investment firm.
-This document has been classified as a **{{ document_type }}**.
+This document has been classified as a **{{documentType}}**.
 Extract the following fields from the document content.
 
 ## Common Fields
@@ -101,7 +101,7 @@ The confidentiality classification of the document.
 
 ## Type-Specific Fields
 
-{{ type_specific_fields_block }}
+{{typeSpecificFieldsBlock}}
 
 ## Suggested Fields
 
@@ -136,23 +136,23 @@ Each template defines a strict JSON Schema used with GPT-4o Structured Outputs t
 
 Shared by both agents — provides the document content.
 
-```jinja2
-{# prompts/user_document.j2 #}
+```handlebars
+{{!-- Prompts/UserDocument.hbs --}}
 
 Process the following document.
 
-**File name:** {{ file_name }}
+**File name:** {{fileName}}
 
-{% if key_value_pairs %}
+{{#if keyValuePairs}}
 **Extracted key-value pairs:**
-{% for kv in key_value_pairs %}
-- {{ kv.key }}: {{ kv.value }} (confidence: {{ kv.confidence }})
-{% endfor %}
-{% endif %}
+{{#each keyValuePairs}}
+- {{this.key}}: {{this.value}} (confidence: {{this.confidence}})
+{{/each}}
+{{/if}}
 
-**Document text ({{ text_length }} characters, {{ page_count }} pages):**
+**Document text ({{textLength}} characters, {{pageCount}} pages):**
 
-{{ extracted_text }}
+{{extractedText}}
 ```
 
 ## 3. Taxonomy Configuration
@@ -401,9 +401,9 @@ flowchart TD
     C1 --> D1{"Agent 1 accuracy<br/>meets target (>90%)?"}
     C2 --> D2{"Agent 2 per-field<br/>accuracy meets target (>85%)?"}
     
-    D1 -->|"Yes"| E1["Freeze classify_type.j2"]
+    D1 -->|"Yes"| E1["Freeze ClassifyType.hbs"]
     D1 -->|"No"| F1["Analyze classification errors"]
-    D2 -->|"Yes"| E2["Freeze extract_{type}.j2"]
+    D2 -->|"Yes"| E2["Freeze Extract{Type}.hbs"]
     D2 -->|"No"| F2["Analyze extraction errors"]
     
     F1 --> G1{"Error type?"}
@@ -426,6 +426,7 @@ flowchart TD
 ### Evaluation Framework
 
 ```python
+# Evaluation harness uses Python/Jupyter — see ADR-005
 # tests/evaluation/evaluate_prompts.py
 
 from dataclasses import dataclass
@@ -567,65 +568,18 @@ def evaluate_agent2(
 
 Agent 2's JSON Schema is generated per document type from the taxonomy configuration, ensuring the model can only return fields defined for that type.
 
-### Handling Parse Failures
+### Response Parsing
 
-```python
-# shared/response_parser.py
+**Agent 2 (Extractor)** uses Structured Outputs, which guarantees the response conforms to the JSON Schema — this eliminates parse failures entirely. No response parser is needed for Agent 2.
 
-import json
-from pydantic import BaseModel, ValidationError
-from models.pipeline import ClassificationResponse, ExtractionResponse
+**Agent 1 (Classifier)** uses JSON mode, which guarantees valid JSON but not schema conformance. The response is deserialized with basic `System.Text.Json`:
 
-def parse_classification_response(raw_response: str) -> ClassificationResponse:
-    """Parse Agent 1 classification response (JSON mode)."""
-    try:
-        data = json.loads(raw_response)
-    except json.JSONDecodeError as e:
-        raise ClassificationParseError(
-            f"Response is not valid JSON: {e}",
-            raw_response=raw_response,
-            retry_with_fallback=True,
-        )
-    try:
-        return ClassificationResponse.model_validate(data)
-    except ValidationError as e:
-        raise ClassificationParseError(
-            f"Response does not match expected schema: {e}",
-            raw_response=raw_response,
-            retry_with_fallback=True,
-        )
-
-def parse_extraction_response(raw_response: str, document_type: str) -> ExtractionResponse:
-    """Parse Agent 2 extraction response (Structured Outputs — parse failures should be rare)."""
-    try:
-        data = json.loads(raw_response)
-    except json.JSONDecodeError as e:
-        raise ExtractionParseError(
-            f"Response is not valid JSON: {e}",
-            raw_response=raw_response,
-            document_type=document_type,
-        )
-    try:
-        return ExtractionResponse.model_validate(data)
-    except ValidationError as e:
-        raise ExtractionParseError(
-            f"Response does not match {document_type} schema: {e}",
-            raw_response=raw_response,
-            document_type=document_type,
-        )
-
-class ClassificationParseError(Exception):
-    def __init__(self, message: str, raw_response: str, retry_with_fallback: bool = False):
-        super().__init__(message)
-        self.raw_response = raw_response
-        self.retry_with_fallback = retry_with_fallback
-
-class ExtractionParseError(Exception):
-    def __init__(self, message: str, raw_response: str, document_type: str):
-        super().__init__(message)
-        self.raw_response = raw_response
-        self.document_type = document_type
+```csharp
+// Agent 1 classification response deserialization
+var result = JsonSerializer.Deserialize<TypeClassificationResult>(rawResponse);
 ```
+
+The `TypeClassificationResult` record is defined in [Models/Pipeline.cs](../../src/IdvEnrichment.Functions/Models/Pipeline.cs). If deserialization fails (malformed JSON from the model), the orchestrator retries the classification call.
 
 ## 6. Token Budget Management
 
@@ -640,39 +594,32 @@ GPT-4o supports 128K context, but cost and latency increase with token count. St
 | 8K–16K tokens (~12 pages) | Send first + last 2 pages | 8,000 |
 | > 16K tokens (>12 pages) | Send first 3 pages + last page + key-value pairs | 6,000 |
 
-```python
-# shared/text_utils.py
+```csharp
+// Shared/TextUtils.cs
 
-def truncate_for_classification(text: str, max_tokens: int = 8000) -> str:
-    """Truncate document text to fit within token budget while preserving signal."""
-    
-    # Rough estimate: 1 token ≈ 4 characters for English text
-    max_chars = max_tokens * 4
-    
-    if len(text) <= max_chars:
-        return text
-    
-    # Split by page breaks (inserted during extraction)
-    pages = text.split("--- PAGE BREAK ---")
-    
-    if len(pages) <= 3:
-        # Short doc — just hard truncate
-        return text[:max_chars] + "\n\n[TRUNCATED — document continues]"
-    
-    # Strategy: first 3 pages + last page
-    first_pages = "--- PAGE BREAK ---".join(pages[:3])
-    last_page = pages[-1]
-    
-    truncated = (
-        first_pages
-        + "\n\n[... MIDDLE PAGES OMITTED ...]\n\n"
-        + last_page
-    )
-    
-    if len(truncated) > max_chars:
-        return truncated[:max_chars] + "\n\n[TRUNCATED]"
-    
-    return truncated
+public static string TruncateForClassification(string text, int maxTokens = 8000)
+{
+    // Rough estimate: 1 token ≈ 4 characters for English text
+    var maxChars = maxTokens * 4;
+
+    if (text.Length <= maxChars)
+        return text;
+
+    var pages = text.Split("--- PAGE BREAK ---");
+
+    if (pages.Length <= 3)
+        return text[..maxChars] + "\n\n[TRUNCATED — document continues]";
+
+    // Strategy: first 3 pages + last page
+    var firstPages = string.Join("--- PAGE BREAK ---", pages[..3]);
+    var lastPage = pages[^1];
+
+    var truncated = firstPages + "\n\n[... MIDDLE PAGES OMITTED ...]\n\n" + lastPage;
+
+    return truncated.Length > maxChars
+        ? truncated[..maxChars] + "\n\n[TRUNCATED]"
+        : truncated;
+}
 ```
 
 ## 7. Cost Optimization Path

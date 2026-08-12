@@ -30,6 +30,7 @@ stateDiagram-v2
     
     ClassifyType --> ExtractMetadata: High type confidence
     ClassifyType --> WriteToReviewQueue: Low type confidence (skip Agent 2)
+    ClassifyType --> WriteToReviewQueue: Type is "Other" (skip Agent 2)
     ClassifyType --> WriteToReviewQueue: Parse failure after retries
     
     ExtractMetadata --> RouteResult: Extraction complete
@@ -48,124 +49,69 @@ stateDiagram-v2
     note right of ExtractMetadata: Agent 2 (GPT-4o)\nType-specific extraction
 ```
 
-### Python Implementation Pattern
+### .NET Isolated Worker Implementation Pattern
 
-```python
-# orchestrators/document_orchestrator.py
+```csharp
+// Orchestrators/DocumentOrchestrator.cs
 
-import azure.durable_functions as df
-from datetime import timedelta
-from models.pipeline import QueueMessage, ExtractionResult, TypeClassification, MetadataExtraction, RoutingDecision
+using IdvEnrichment.Functions.Models;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.DurableTask;
 
-def document_orchestrator(ctx: df.DurableOrchestrationContext):
-    """Process a single document: extract → classify type → extract metadata → route."""
-    
-    # 1. Parse input
-    input_data = ctx.get_input()
-    message = QueueMessage.model_validate(input_data)
-    
-    # 2. Fetch document content from SharePoint
-    document_content = yield ctx.call_activity_with_retry(
-        "fetch_document",
-        retry_options=df.RetryOptions(
-            first_retry_interval_in_milliseconds=5000,
-            max_number_of_attempts=3,
-            backoff_coefficient=2.0,
-        ),
-        input_=message.model_dump(),
-    )
-    
-    # 3. Extract text via Document Intelligence
-    extraction_result: ExtractionResult = yield ctx.call_activity_with_retry(
-        "extract_content",
-        retry_options=df.RetryOptions(
-            first_retry_interval_in_milliseconds=5000,
-            max_number_of_attempts=3,
-            backoff_coefficient=2.0,
-            max_retry_interval_in_milliseconds=30000,
-        ),
-        input_={
-            "document_url": message.file_url,
-            "content_type": message.content_type,
-        },
-    )
-    
-    # 4. Classify type via Agent 1 (GPT-4o-mini)
-    type_result: TypeClassification = yield ctx.call_activity_with_retry(
-        "classify_type",
-        retry_options=df.RetryOptions(
-            first_retry_interval_in_milliseconds=3000,
-            max_number_of_attempts=3,
-            backoff_coefficient=2.0,
-        ),
-        input_={
-            "document_id": message.document_id,
-            "file_name": message.file_name,
-            "extracted_text": extraction_result["text"],
-            "key_value_pairs": extraction_result["key_value_pairs"],
-        },
-    )
-    
-    # 5. If type confidence is below threshold, skip extraction and route to review
-    if type_result["confidence"] < type_result["threshold"]:
-        routing = yield ctx.call_activity(
-            "route_result",
-            input_={
-                "document_id": message.document_id,
-                "file_name": message.file_name,
-                "site_id": message.site_id,
-                "drive_id": message.drive_id,
-                "item_id": message.item_id,
-                "type_classification": type_result,
-                "metadata_extraction": None,
-                "source": message.source,
-                "batch_id": message.batch_id,
-                "skip_reason": "low_type_confidence",
-            },
-        )
-        return routing
-    
-    # 6. Extract metadata via Agent 2 (GPT-4o), using document_type from step 4
-    metadata_result: MetadataExtraction = yield ctx.call_activity_with_retry(
-        "extract_metadata",
-        retry_options=df.RetryOptions(
-            first_retry_interval_in_milliseconds=3000,
-            max_number_of_attempts=3,
-            backoff_coefficient=2.0,
-        ),
-        input_={
-            "document_id": message.document_id,
-            "file_name": message.file_name,
-            "document_type": type_result["document_type"],
-            "extracted_text": extraction_result["text"],
-            "key_value_pairs": extraction_result["key_value_pairs"],
-        },
-    )
-    
-    # 7. Route based on both type and field confidences
-    routing = yield ctx.call_activity(
-        "route_result",
-        input_={
-            "document_id": message.document_id,
-            "file_name": message.file_name,
-            "site_id": message.site_id,
-            "drive_id": message.drive_id,
-            "item_id": message.item_id,
-            "type_classification": type_result,
-            "metadata_extraction": metadata_result,
-            "source": message.source,
-            "batch_id": message.batch_id,
-        },
-    )
-    
-    return routing
+namespace IdvEnrichment.Functions.Orchestrators;
 
+public static class DocumentOrchestrator
+{
+    [Function(nameof(DocumentProcessingOrchestrator))]
+    public static async Task<EnrichmentResult> DocumentProcessingOrchestrator(
+        [OrchestrationTrigger] TaskOrchestrationContext ctx)
+    {
+        var message = ctx.GetInput<QueueMessage>()
+            ?? throw new InvalidOperationException("Orchestrator input was null");
 
-main = df.Blueprint()
+        var retry = TaskOptions.FromRetryPolicy(new RetryPolicy(
+            maxNumberOfAttempts: 3,
+            firstRetryInterval: TimeSpan.FromSeconds(5),
+            backoffCoefficient: 2.0));
 
-@main.orchestration_trigger(context_name="ctx")
-def document_processing_orchestrator(ctx: df.DurableOrchestrationContext):
-    return document_orchestrator(ctx)
+        // 1. Get pre-authenticated download URL from Graph API
+        //    @microsoft.graph.downloadUrl is short-lived and accessible by Doc Intelligence directly.
+        var downloadUrl = await ctx.CallActivityAsync<string>(
+            "GetDocumentDownloadUrl", message, retry);
+
+        // 2. Extract text via Document Intelligence (using the download URL)
+        var extraction = await ctx.CallActivityAsync<ExtractionResult>(
+            "ExtractContent",
+            new ExtractContentInput(downloadUrl, message.ContentType),
+            retry);
+
+        // 3. Classify type via Agent 1 (GPT-4o-mini)
+        var typeResult = await ctx.CallActivityAsync<TypeClassificationResult>(
+            "ClassifyType",
+            new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
+            TaskOptions.FromRetryPolicy(new RetryPolicy(3, TimeSpan.FromSeconds(3), 2.0)));
+
+        // 4. Load threshold from taxonomy config; skip Agent 2 if type confidence is low or type is "Other"
+        var typeThreshold = await ctx.CallActivityAsync<double>("GetTypeConfidenceThreshold", typeResult.DocumentType);
+        var skipExtraction = typeResult.Confidence < typeThreshold
+            || typeResult.DocumentType == DocumentType.Other;
+
+        MetadataExtractionResult? metadata = null;
+        if (!skipExtraction)
+        {
+            // 5. Extract metadata via Agent 2 (GPT-4o), using document_type from step 3
+            metadata = await ctx.CallActivityAsync<MetadataExtractionResult>(
+                "ExtractMetadata",
+                new ExtractMetadataInput(message.DocumentId, message.FileName, typeResult.DocumentType, extraction.Text, extraction.KeyValuePairs),
+                TaskOptions.FromRetryPolicy(new RetryPolicy(3, TimeSpan.FromSeconds(3), 2.0)));
+        }
+
+        // 6. Route based on both type and field confidences
+        return await ctx.CallActivityAsync<EnrichmentResult>(
+            "RouteResult",
+            new RouteResultInput(message, typeResult, metadata));
+    }
+}
 ```
 
 ### Batch Orchestrator (Fan-Out/Fan-In)
@@ -198,291 +144,210 @@ flowchart TD
     P3 --> F
 ```
 
-```python
-# orchestrators/batch_orchestrator.py
+```csharp
+// Orchestrators/BatchOrchestrator.cs
 
-import azure.durable_functions as df
-from datetime import timedelta
+using IdvEnrichment.Functions.Models;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.DurableTask;
 
-def batch_orchestrator(ctx: df.DurableOrchestrationContext):
-    """Enumerate a SharePoint library and process all documents in parallel."""
-    
-    input_data = ctx.get_input()
-    site_id = input_data["site_id"]
-    drive_id = input_data["drive_id"]
-    batch_id = ctx.instance_id  # Use orchestration instance ID as batch ID
-    max_concurrency = input_data.get("max_concurrency", 20)
-    
-    # 1. Enumerate all documents in the library
-    documents = yield ctx.call_activity(
-        "enumerate_library",
-        input_={"site_id": site_id, "drive_id": drive_id},
-    )
-    
-    # 2. Filter already-processed documents
-    unprocessed = yield ctx.call_activity(
-        "filter_processed",
-        input_={"documents": documents, "batch_id": batch_id},
-    )
-    
-    # 3. Fan-out with controlled parallelism
-    # Process in chunks to avoid overwhelming the system
-    results = []
-    for i in range(0, len(unprocessed), max_concurrency):
-        chunk = unprocessed[i : i + max_concurrency]
-        
-        # Start sub-orchestrations for this chunk
-        tasks = []
-        for doc in chunk:
-            task = ctx.call_sub_orchestrator(
-                "document_processing_orchestrator",
-                input_={
-                    "document_id": doc["id"],
-                    "site_id": site_id,
-                    "drive_id": drive_id,
-                    "item_id": doc["id"],
-                    "file_name": doc["name"],
-                    "file_url": doc["downloadUrl"],
-                    "content_type": doc["mimeType"],
-                    "modified_date_time": doc["lastModifiedDateTime"],
-                    "source": "batch",
-                    "batch_id": batch_id,
-                    "attempt_number": 1,
-                },
-                instance_id=f"{batch_id}:{doc['id']}",
-            )
-            tasks.append(task)
-        
-        # Wait for all in this chunk to complete
-        chunk_results = yield ctx.task_all(tasks)
-        results.extend(chunk_results)
-        
-        # Log progress
-        ctx.set_custom_status({
-            "processed": len(results),
-            "total": len(unprocessed),
-            "percentComplete": round(len(results) / len(unprocessed) * 100, 1),
-        })
-    
-    # 4. Generate batch report
-    report = yield ctx.call_activity(
-        "generate_batch_report",
-        input_={"batch_id": batch_id, "results": results},
-    )
-    
-    return report
+namespace IdvEnrichment.Functions.Orchestrators;
 
+public static class BatchOrchestrator
+{
+    [Function(nameof(BatchProcessingOrchestrator))]
+    public static async Task<BatchReport> BatchProcessingOrchestrator(
+        [OrchestrationTrigger] TaskOrchestrationContext ctx)
+    {
+        var input = ctx.GetInput<BatchRequest>()
+            ?? throw new InvalidOperationException("Batch orchestrator input was null");
 
-main = df.Blueprint()
+        var batchId = ctx.InstanceId;
+        var maxConcurrency = input.MaxConcurrency ?? 20;
 
-@main.orchestration_trigger(context_name="ctx")
-def batch_processing_orchestrator(ctx: df.DurableOrchestrationContext):
-    return batch_orchestrator(ctx)
+        // 1. Resolve SharePoint URL to siteId + driveId + optional folderPath
+        var target = await ctx.CallActivityAsync<ResolvedSharePointTarget>(
+            "ResolveSharePointTarget",
+            input.Url);
+
+        // 2. Enumerate all documents in the library/folder
+        var documents = await ctx.CallActivityAsync<IReadOnlyList<LibraryDocument>>(
+            "EnumerateLibrary",
+            target);
+
+        // 2. Filter already-processed documents
+        var unprocessed = await ctx.CallActivityAsync<IReadOnlyList<LibraryDocument>>(
+            "FilterProcessed",
+            new { Documents = documents, BatchId = batchId });
+
+        // 3. Fan-out with controlled parallelism (chunked)
+        var results = new List<EnrichmentResult>(unprocessed.Count);
+        for (var i = 0; i < unprocessed.Count; i += maxConcurrency)
+        {
+            var chunk = unprocessed.Skip(i).Take(maxConcurrency).ToList();
+
+            var tasks = chunk.Select(doc => ctx.CallSubOrchestratorAsync<EnrichmentResult>(
+                nameof(DocumentOrchestrator.DocumentProcessingOrchestrator),
+                new QueueMessage(
+                    DocumentId: doc.Id,
+                    SiteId: target.SiteId,
+                    DriveId: target.DriveId,
+                    ItemId: doc.Id,
+                    FileName: doc.Name,
+                    FileUrl: doc.DownloadUrl,
+                    ContentType: doc.MimeType,
+                    ModifiedDateTime: doc.LastModifiedDateTime,
+                    Source: ProcessingSource.Batch,
+                    BatchId: batchId),
+                new TaskOptions { InstanceId = $"{batchId}:{doc.Id}" }))
+                .ToList();
+
+            var chunkResults = await Task.WhenAll(tasks);
+            results.AddRange(chunkResults);
+
+            // Progress tracking — surfaced via Durable Task status query APIs
+            ctx.SetCustomStatus(new
+            {
+                Processed = results.Count,
+                Total = unprocessed.Count,
+                PercentComplete = Math.Round(results.Count / (double)unprocessed.Count * 100, 1),
+            });
+        }
+
+        // 4. Generate batch report
+        return await ctx.CallActivityAsync<BatchReport>(
+            "GenerateBatchReport",
+            new { BatchId = batchId, Results = results });
+    }
+}
 ```
 
 ## 3. Activity Implementations (Skeleton)
 
 ### Extract Content Activity
 
-```python
-# activities/extract_content.py
+```csharp
+// Activities/ExtractContentActivity.cs
 
-import azure.durable_functions as df
-from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
-from azure.identity import DefaultAzureCredential
-from shared.config import get_settings
+using Azure.AI.DocumentIntelligence;
+using Azure.Identity;
+using IdvEnrichment.Functions.Configuration;
+using IdvEnrichment.Functions.Models;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Options;
 
-main = df.Blueprint()
+namespace IdvEnrichment.Functions.Activities;
 
-@main.activity_trigger(input_name="input")
-async def extract_content(input: dict) -> dict:
-    """Call Azure AI Document Intelligence to extract text and key-value pairs."""
-    
-    settings = get_settings()
-    credential = DefaultAzureCredential()
-    client = DocumentIntelligenceClient(
-        endpoint=settings.doc_intelligence_endpoint,
-        credential=credential,
-    )
-    
-    # Use prebuilt-read model for text extraction
-    poller = client.begin_analyze_document(
-        model_id="prebuilt-read",
-        analyze_request=AnalyzeDocumentRequest(url_source=input["document_url"]),
-    )
-    result = poller.result()
-    
-    # Normalize output
-    text = ""
-    for page in result.pages:
-        for line in page.lines:
-            text += line.content + "\n"
-        text += "\n--- PAGE BREAK ---\n\n"
-    
-    # Extract key-value pairs if present
-    kv_pairs = []
-    if result.key_value_pairs:
-        for kv in result.key_value_pairs:
-            if kv.key and kv.value:
-                kv_pairs.append({
-                    "key": kv.key.content,
-                    "value": kv.value.content,
-                    "confidence": kv.confidence,
-                })
-    
-    return {
-        "text": text,
-        "page_count": len(result.pages),
-        "text_length": len(text),
-        "key_value_pairs": kv_pairs,
-        "language": result.languages[0].locale if result.languages else "unknown",
+public sealed class ExtractContentActivity(IOptions<PipelineSettings> settings)
+{
+    private readonly DocumentIntelligenceClient _client = new(
+        new Uri(settings.Value.DocIntelligenceEndpoint),
+        new DefaultAzureCredential());
+
+    [Function(nameof(ExtractContent))]
+    public async Task<ExtractionResult> ExtractContent(
+        [ActivityTrigger] ExtractContentInput input)
+    {
+        var operation = await _client.AnalyzeDocumentAsync(
+            WaitUntil.Completed,
+            "prebuilt-read",
+            new Uri(input.DocumentUrl));
+
+        var result = operation.Value;
+        var text = string.Join(
+            Environment.NewLine + Environment.NewLine + "--- PAGE BREAK ---" + Environment.NewLine + Environment.NewLine,
+            result.Pages.Select(p => string.Join(Environment.NewLine, p.Lines.Select(l => l.Content))));
+
+        var kvPairs = (result.KeyValuePairs ?? [])
+            .Where(kv => kv.Key is not null && kv.Value is not null)
+            .Select(kv => new KeyValuePair(kv.Key!.Content, kv.Value!.Content, kv.Confidence))
+            .ToList();
+
+        return new ExtractionResult(
+            Text: text,
+            PageCount: result.Pages.Count,
+            TextLength: text.Length,
+            KeyValuePairs: kvPairs,
+            Language: result.Languages?.FirstOrDefault()?.Locale ?? "unknown");
     }
+}
+
+public sealed record ExtractContentInput(string DocumentUrl, string ContentType);
 ```
 
 ### Classify Type Activity (Agent 1 — GPT-4o-mini)
 
-```python
-# activities/classify_type.py
+```csharp
+// Activities/ClassifyTypeActivity.cs
 
-import json
-import azure.durable_functions as df
-from openai import AzureOpenAI
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from shared.config import get_settings
-from shared.taxonomy import load_taxonomy
-from shared.prompts import load_prompt_template
+using Azure.AI.OpenAI;
+using Azure.Identity;
+using IdvEnrichment.Functions.Configuration;
+using IdvEnrichment.Functions.Models;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Options;
+using OpenAI.Chat;
+using System.Text.Json;
 
-main = df.Blueprint()
+namespace IdvEnrichment.Functions.Activities;
 
-@main.activity_trigger(input_name="input")
-async def classify_type(input: dict) -> dict:
-    """Agent 1: Classify document type against the taxonomy using GPT-4o-mini."""
-    
-    settings = get_settings()
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default",
-    )
-    
-    client = AzureOpenAI(
-        azure_endpoint=settings.openai_endpoint,
-        azure_ad_token_provider=token_provider,
-        api_version="2024-12-01-preview",
-    )
-    
-    taxonomy = load_taxonomy()
-    prompt_template = load_prompt_template("classify_type")
-    
-    system_prompt = prompt_template.render(
-        taxonomy=taxonomy,
-        categories=taxonomy.categories,
-    )
-    
-    user_prompt = f"""Classify the following document.
+public sealed class ClassifyTypeActivity(IOptions<PipelineSettings> settings)
+{
+    private readonly ChatClient _chat = new AzureOpenAIClient(
+            new Uri(settings.Value.OpenAiEndpoint),
+            new DefaultAzureCredential())
+        .GetChatClient(settings.Value.OpenAiMiniDeployment);
 
-**File name:** {input['file_name']}
+    [Function(nameof(ClassifyType))]
+    public async Task<TypeClassificationResult> ClassifyType(
+        [ActivityTrigger] ClassifyTypeInput input)
+    {
+        var systemPrompt = "..."; // Rendered from Prompts/ClassifyType.hbs
+        var userPrompt = $"File name: {input.FileName}\n\n{input.ExtractedText[..Math.Min(4000, input.ExtractedText.Length)]}";
 
-**Extracted key-value pairs:**
-{json.dumps(input['key_value_pairs'], indent=2)}
+        var completion = await _chat.CompleteChatAsync(
+            new ChatMessage[] { new SystemChatMessage(systemPrompt), new UserChatMessage(userPrompt) },
+            new ChatCompletionOptions
+            {
+                ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+                Temperature = 0.1f,
+                MaxOutputTokenCount = 300,
+            });
 
-**Document text (first 4000 chars):**
-{input['extracted_text'][:4000]}
-"""
-    
-    response = client.chat.completions.create(
-        model=settings.openai_mini_deployment,  # GPT-4o-mini
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.1,
-        max_tokens=500,
-    )
-    
-    result = json.loads(response.choices[0].message.content)
-    category = result["document_type"]
-    threshold = taxonomy.get_threshold(category)
-    
-    return {
-        "document_type": category,
-        "confidence": result["confidence"],
-        "threshold": threshold,
-        "reasoning": result.get("reasoning", ""),
-        "input_tokens": response.usage.prompt_tokens,
-        "output_tokens": response.usage.completion_tokens,
+        var json = completion.Value.Content[0].Text;
+        return JsonSerializer.Deserialize<TypeClassificationResult>(json)
+            ?? throw new InvalidOperationException("Failed to parse type classification response");
     }
+}
+
+public sealed record ClassifyTypeInput(
+    string DocumentId,
+    string FileName,
+    string ExtractedText,
+    IReadOnlyList<KeyValuePair> KeyValuePairs);
 ```
 
 ### Extract Metadata Activity (Agent 2 — GPT-4o)
 
-```python
-# activities/extract_metadata.py
+Agent 2 follows the same shape as `ClassifyTypeActivity`: it is a `sealed class` activity that injects `IOptions<PipelineSettings>` and constructs an `AzureOpenAIClient` with `DefaultAzureCredential`. Two things change:
 
-import json
-import azure.durable_functions as df
-from openai import AzureOpenAI
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from shared.config import get_settings
-from shared.prompts import load_prompt_template
-from shared.schemas import load_extraction_schema
+- **Deployment binding** — the `ChatClient` is obtained via `.GetChatClient(settings.Value.OpenAiDeployment)` (the full GPT-4o deployment) rather than `OpenAiMiniDeployment`.
+- **Response format** — instead of `ChatResponseFormat.CreateJsonObjectFormat()`, Agent 2 uses `ChatResponseFormat.CreateJsonSchemaFormat(name: documentType, jsonSchema: schemaForType, strictSchemaEnabled: true)` to enable OpenAI **Structured Outputs**, with a per-document-type JSON schema loaded from `Schemas/{documentType}.json`. This guarantees the model returns fields that match the taxonomy's declared shape for that type.
 
-main = df.Blueprint()
+Additional input record for Agent 2:
 
-@main.activity_trigger(input_name="input")
-async def extract_metadata(input: dict) -> dict:
-    """Agent 2: Extract type-specific metadata fields using GPT-4o with Structured Outputs."""
-    
-    settings = get_settings()
-    token_provider = get_bearer_token_provider(
-        DefaultAzureCredential(),
-        "https://cognitiveservices.azure.com/.default",
-    )
-    
-    client = AzureOpenAI(
-        azure_endpoint=settings.openai_endpoint,
-        azure_ad_token_provider=token_provider,
-        api_version="2024-12-01-preview",
-    )
-    
-    document_type = input["document_type"]
-    prompt_template = load_prompt_template(f"extract_{document_type}")
-    extraction_schema = load_extraction_schema(document_type)
-    
-    system_prompt = prompt_template.render(document_type=document_type)
-    
-    user_prompt = f"""Extract metadata from this {document_type} document.
+```csharp
+public sealed record ExtractMetadataInput(
+    string DocumentId,
+    string FileName,
+    DocumentType DocumentType,
+    string ExtractedText,
+    IReadOnlyList<KeyValuePair> KeyValuePairs);
 
-**File name:** {input['file_name']}
-
-**Extracted key-value pairs:**
-{json.dumps(input['key_value_pairs'], indent=2)}
-
-**Document text:**
-{input['extracted_text'][:8000]}
-"""
-    
-    response = client.chat.completions.create(
-        model=settings.openai_deployment,  # GPT-4o
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=extraction_schema,  # Structured Outputs
-        temperature=0.1,
-        max_tokens=2000,
-    )
-    
-    result = json.loads(response.choices[0].message.content)
-    
-    return {
-        "document_type": document_type,
-        "fields": result["fields"],
-        "field_confidences": result.get("field_confidences", {}),
-        "input_tokens": response.usage.prompt_tokens,
-        "output_tokens": response.usage.completion_tokens,
-    }
+public sealed record RouteResultInput(
+    QueueMessage Message,
+    TypeClassificationResult TypeClassification,
+    MetadataExtractionResult? Metadata);
 ```
 
 ## 4. Idempotency & Deduplication
@@ -511,9 +376,8 @@ Writing metadata columns is inherently idempotent — writing the same values ag
 
 ### Concurrency Controls
 
-```python
-# host.json — Azure Functions host configuration
-
+```json
+// host.json — Azure Functions host configuration
 {
   "version": "2.0",
   "extensions": {
