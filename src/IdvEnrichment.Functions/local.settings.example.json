@@ -11,7 +11,7 @@
 
     "DocIntelligenceEndpoint": "https://<your-doc-intel-resource>.cognitiveservices.azure.com/",
 
-    "TaxonomyBlobUrl": "",
+    "TaxonomyBlobUrl": "../../docs/taxonomy/taxonomy.yaml",
     "ConfidenceThresholdDefault": "0.80",
     "BatchMaxConcurrency": "10"
   }
