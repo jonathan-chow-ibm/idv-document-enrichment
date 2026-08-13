@@ -102,7 +102,30 @@ public sealed record ExtractMetadataInput(
 public sealed record RouteResultInput(
     QueueMessage Message,
     TypeClassificationResult TypeClassification,
-    MetadataExtractionResult? Metadata);
+    MetadataExtractionResult? Metadata,
+    ExtractionResult Extraction);
+
+public sealed record FilterProcessedInput(
+    [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
+    [property: JsonPropertyName("batchId")] string BatchId);
+
+public sealed record WriteMetadataInput(
+    [property: JsonPropertyName("siteId")] string SiteId,
+    [property: JsonPropertyName("driveId")] string DriveId,
+    [property: JsonPropertyName("itemId")] string ItemId,
+    [property: JsonPropertyName("result")] EnrichmentResult Result);
+
+public sealed record RecordProcessingResultInput(
+    [property: JsonPropertyName("batchId")] string BatchId,
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("status")] string Status);
+
+public sealed record GenerateBatchReportInput(
+    [property: JsonPropertyName("batchId")] string BatchId,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
+    [property: JsonPropertyName("results")] IReadOnlyList<EnrichmentResult> Results,
+    [property: JsonPropertyName("errors")] int Errors);
 
 // --- Agent 1: Document Type Classification ---
 

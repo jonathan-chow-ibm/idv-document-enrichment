@@ -1,6 +1,7 @@
 using Azure.AI.DocumentIntelligence;
 using Azure.AI.OpenAI;
 using Azure.Core;
+using Azure.Data.Tables;
 using Azure.Identity;
 using IdvEnrichment.Functions.Configuration;
 using IdvEnrichment.Functions.Shared;
@@ -43,6 +44,13 @@ var host = new HostBuilder()
         });
 
         services.AddSingleton<TaxonomyLoader>();
+
+        services.AddSingleton(_ =>
+        {
+            var connectionString = context.Configuration["AzureWebJobsStorage"]
+                ?? throw new InvalidOperationException("AzureWebJobsStorage is not configured.");
+            return new TableServiceClient(connectionString);
+        });
     })
     .Build();
 
