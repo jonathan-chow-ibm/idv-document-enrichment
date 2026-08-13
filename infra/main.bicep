@@ -86,7 +86,7 @@ resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024
   parent: openAi
   name: openAiDeploymentName
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'
     capacity: openAiCapacity
   }
   properties: {
@@ -103,14 +103,14 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
   name: openAiMiniDeploymentName
   dependsOn: [openAiDeployment]
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'
     capacity: openAiMiniCapacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-4o-mini'
-      version: '2024-07-18'
+      name: 'gpt-4o'
+      version: '2024-11-20'
     }
   }
 }
@@ -127,13 +127,13 @@ resource docIntelligence 'Microsoft.CognitiveServices/accounts@2024-04-01-previe
   }
 }
 
-// --- Function App (Consumption) ---
+// --- Function App (Flex Consumption — serverless, no VM quota required) ---
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: hostingPlanName
   location: location
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
   properties: {
     reserved: true // Linux
@@ -149,13 +149,29 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   }
   properties: {
     serverFarmId: hostingPlan.id
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storageAccount.properties.primaryEndpoints.blob}deploymentpackage'
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: 10
+        instanceMemoryMB: 2048
+      }
+      runtime: {
+        name: 'dotnet-isolated'
+        version: '9.0'
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'DOTNET-ISOLATED|10.0'
       appSettings: [
-        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'dotnet-isolated' }
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
-        { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}' }
-        { name: 'APPINSIGHTS_INSTRUMENTATIONKEY', value: appInsights.properties.InstrumentationKey }
+        { name: 'AzureWebJobsStorage__accountName', value: storageAccount.name }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
         { name: 'OpenAiEndpoint', value: openAi.properties.endpoint }
         { name: 'OpenAiDeployment', value: openAiDeploymentName }
