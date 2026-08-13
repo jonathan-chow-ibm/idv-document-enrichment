@@ -27,15 +27,8 @@ param openAiMiniDeploymentName string = 'gpt-4o-mini'
 @description('Azure OpenAI GPT-4o-mini TPM capacity (in thousands)')
 param openAiMiniCapacity int = 60
 
-@description('Owner email tag required by Neudesic policy')
-param ownerEmail string = 'Jonathan.Chow@neudesic.com'
-
-@description('Set to false to skip model deployments when quota is not yet available')
-param deployModels bool = true
-
 // --- Naming ---
 var resourceToken = '${baseName}-${environmentName}'
-var tags = { Owner: ownerEmail }
 var functionAppName = 'func-${resourceToken}'
 var storageName = replace('st${resourceToken}', '-', '')
 var appInsightsName = 'appi-${resourceToken}'
@@ -48,7 +41,6 @@ var hostingPlanName = 'plan-${resourceToken}'
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: take(storageName, 24)
   location: location
-  tags: tags
   sku: { name: 'Standard_LRS' }
   kind: 'StorageV2'
   properties: {
@@ -61,7 +53,6 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
-  tags: tags
   kind: 'web'
   properties: {
     Application_Type: 'web'
@@ -72,7 +63,6 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: take(keyVaultName, 24)
   location: location
-  tags: tags
   properties: {
     tenantId: subscription().tenantId
     sku: { family: 'A', name: 'standard' }
@@ -84,7 +74,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 resource openAi 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
   name: openAiName
   location: location
-  tags: tags
   kind: 'OpenAI'
   sku: { name: 'S0' }
   properties: {
@@ -93,7 +82,7 @@ resource openAi 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
   }
 }
 
-resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = if (deployModels) {
+resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
   parent: openAi
   name: openAiDeploymentName
   sku: {
@@ -109,7 +98,7 @@ resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024
   }
 }
 
-resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = if (deployModels) {
+resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
   parent: openAi
   name: openAiMiniDeploymentName
   dependsOn: [openAiDeployment]
@@ -120,8 +109,8 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
   properties: {
     model: {
       format: 'OpenAI'
-      name: openAiModelName  // same model as Agent 2; mini unavailable in this region
-      version: openAiModelVersion
+      name: 'gpt-4o'
+      version: '2024-11-20'
     }
   }
 }
@@ -130,7 +119,6 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
 resource docIntelligence 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
   name: docIntelName
   location: location
-  tags: tags
   kind: 'FormRecognizer'
   sku: { name: 'S0' }
   properties: {
@@ -143,7 +131,6 @@ resource docIntelligence 'Microsoft.CognitiveServices/accounts@2024-04-01-previe
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: hostingPlanName
   location: location
-  tags: tags
   sku: {
     name: 'FC1'
     tier: 'FlexConsumption'
@@ -156,7 +143,6 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
-  tags: tags
   kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
@@ -179,7 +165,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       runtime: {
         name: 'dotnet-isolated'
-        version: '10.0'
+        version: '9.0'
       }
     }
     siteConfig: {
@@ -191,10 +177,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'OpenAiDeployment', value: openAiDeploymentName }
         { name: 'OpenAiMiniDeployment', value: openAiMiniDeploymentName }
         { name: 'DocIntelligenceEndpoint', value: docIntelligence.properties.endpoint }
-        { name: 'TaxonomyBlobUrl', value: '${storageAccount.properties.primaryEndpoints.blob}config/taxonomy.yaml' }
-        { name: 'BatchMaxConcurrency', value: '10' }
-        { name: 'BatchChunkSize', value: '500' }
-        { name: 'BatchReportsContainerUrl', value: '${storageAccount.properties.primaryEndpoints.blob}batch-reports' }
       ]
     }
   }
@@ -206,39 +188,6 @@ resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-0
   scope: openAi
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// --- RBAC: Function App → Storage (Storage Blob Data Owner — required for AzureWebJobsStorage__accountName pattern) ---
-resource storageBlobOwnerRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, functionApp.id, 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
-  scope: storageAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// --- RBAC: Function App → Storage (Storage Queue Data Contributor — Durable Functions queues) ---
-resource storageQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, functionApp.id, '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
-  scope: storageAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// --- RBAC: Function App → Storage (Storage Table Data Contributor — Durable + tracking table) ---
-resource storageTableRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, functionApp.id, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
-  scope: storageAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
