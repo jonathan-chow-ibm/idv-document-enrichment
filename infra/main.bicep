@@ -27,8 +27,12 @@ param openAiMiniDeploymentName string = 'gpt-4o-mini'
 @description('Azure OpenAI GPT-4o-mini TPM capacity (in thousands)')
 param openAiMiniCapacity int = 60
 
+@description('Owner email tag required by Neudesic policy')
+param ownerEmail string = 'Jonathan.Chow@neudesic.com'
+
 // --- Naming ---
 var resourceToken = '${baseName}-${environmentName}'
+var tags = { Owner: ownerEmail }
 var functionAppName = 'func-${resourceToken}'
 var storageName = replace('st${resourceToken}', '-', '')
 var appInsightsName = 'appi-${resourceToken}'
@@ -41,6 +45,7 @@ var hostingPlanName = 'plan-${resourceToken}'
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: take(storageName, 24)
   location: location
+  tags: tags
   sku: { name: 'Standard_LRS' }
   kind: 'StorageV2'
   properties: {
@@ -53,6 +58,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
+  tags: tags
   kind: 'web'
   properties: {
     Application_Type: 'web'
@@ -63,6 +69,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: take(keyVaultName, 24)
   location: location
+  tags: tags
   properties: {
     tenantId: subscription().tenantId
     sku: { family: 'A', name: 'standard' }
@@ -74,6 +81,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 resource openAi 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
   name: openAiName
   location: location
+  tags: tags
   kind: 'OpenAI'
   sku: { name: 'S0' }
   properties: {
@@ -119,6 +127,7 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
 resource docIntelligence 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
   name: docIntelName
   location: location
+  tags: tags
   kind: 'FormRecognizer'
   sku: { name: 'S0' }
   properties: {
@@ -131,6 +140,7 @@ resource docIntelligence 'Microsoft.CognitiveServices/accounts@2024-04-01-previe
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: hostingPlanName
   location: location
+  tags: tags
   sku: {
     name: 'FC1'
     tier: 'FlexConsumption'
@@ -143,6 +153,7 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
+  tags: tags
   kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
