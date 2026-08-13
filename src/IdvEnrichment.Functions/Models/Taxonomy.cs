@@ -47,4 +47,12 @@ public sealed class ConfidenceThresholds
 public sealed record TaxonomyData(
     IReadOnlyList<DocumentTypeDefinition> DocumentTypes,
     IReadOnlyList<CategoryDefinition> CommonCategories,
-    ConfidenceThresholds Thresholds);
+    ConfidenceThresholds Thresholds)
+{
+    // [JsonStringEnumMemberName] on the enum drives the label used here
+    public DocumentTypeDefinition? GetDocumentType(DocumentType documentType)
+    {
+        var label = System.Text.Json.JsonSerializer.Serialize(documentType).Trim('"');
+        return DocumentTypes.FirstOrDefault(d => d.Label == label);
+    }
+}

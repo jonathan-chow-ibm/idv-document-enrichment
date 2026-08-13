@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using HandlebarsDotNet;
 using IdvEnrichment.Functions.Models;
 
@@ -8,11 +9,13 @@ public static class PromptRenderer
 {
     private static readonly HandlebarsTemplate<object, object> _classifyType;
     private static readonly HandlebarsTemplate<object, object> _userDocument;
+    private static readonly HandlebarsTemplate<object, object> _extractMetadata;
 
     static PromptRenderer()
     {
         _classifyType = Handlebars.Compile(LoadTemplate("ClassifyType"));
         _userDocument = Handlebars.Compile(LoadTemplate("UserDocument"));
+        _extractMetadata = Handlebars.Compile(LoadTemplate("ExtractMetadata"));
     }
 
     public static string RenderClassifyType(IReadOnlyList<DocumentTypeDefinition> types)
@@ -31,7 +34,16 @@ public static class PromptRenderer
         });
 
     public static string RenderExtractMetadata(DocumentType documentType, TaxonomyData taxonomy)
-        => throw new NotImplementedException("Extract metadata templates are built in Phase 3.");
+    {
+        var docTypeLabel = System.Text.Json.JsonSerializer.Serialize(documentType).Trim('"');
+        var docTypeDef = taxonomy.GetDocumentType(documentType);
+        return _extractMetadata(new
+        {
+            documentType = docTypeLabel,
+            commonCategories = taxonomy.CommonCategories,
+            specificFields = docTypeDef?.SpecificFields ?? [],
+        });
+    }
 
     private static string LoadTemplate(string name)
     {
