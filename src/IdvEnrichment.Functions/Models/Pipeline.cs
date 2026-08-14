@@ -104,6 +104,11 @@ public sealed record GetDocumentDownloadUrlInput(
     [property: JsonPropertyName("itemId")] string ItemId,
     [property: JsonPropertyName("fileUrl")] string FileUrl);
 
+public sealed record GetDocumentDownloadUrlInput(
+    [property: JsonPropertyName("driveId")] string DriveId,
+    [property: JsonPropertyName("itemId")] string ItemId,
+    [property: JsonPropertyName("fileUrl")] string FileUrl);
+
 public sealed record ClassifyTypeInput(
     [property: JsonPropertyName("documentId")] string DocumentId,
     [property: JsonPropertyName("fileName")] string FileName,
