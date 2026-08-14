@@ -86,24 +86,29 @@ public sealed record ExtractionResult(
 
 public sealed record ExtractContentInput(string DocumentUrl);
 
+public sealed record GetDocumentDownloadUrlInput(
+    [property: JsonPropertyName("driveId")] string DriveId,
+    [property: JsonPropertyName("itemId")] string ItemId,
+    [property: JsonPropertyName("fileUrl")] string FileUrl);
+
 public sealed record ClassifyTypeInput(
-    string DocumentId,
-    string FileName,
-    string ExtractedText,
-    IReadOnlyList<DocumentField> KeyValuePairs);
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("extractedText")] string ExtractedText,
+    [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs);
 
 public sealed record ExtractMetadataInput(
-    string DocumentId,
-    string FileName,
-    DocumentType DocumentType,
-    string ExtractedText,
-    IReadOnlyList<DocumentField> KeyValuePairs);
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
+    [property: JsonPropertyName("extractedText")] string ExtractedText,
+    [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs);
 
 public sealed record RouteResultInput(
-    QueueMessage Message,
-    TypeClassificationResult TypeClassification,
-    MetadataExtractionResult? Metadata,
-    ExtractionResult Extraction);
+    [property: JsonPropertyName("message")] QueueMessage Message,
+    [property: JsonPropertyName("typeClassification")] TypeClassificationResult TypeClassification,
+    [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
+    [property: JsonPropertyName("extraction")] ExtractionResult Extraction);
 
 public sealed record FilterProcessedInput(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,

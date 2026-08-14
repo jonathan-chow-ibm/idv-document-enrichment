@@ -7,7 +7,6 @@
     "OpenAiEndpoint": "https://<your-openai-resource>.openai.azure.com/",
     "OpenAiDeployment": "gpt-4o",
     "OpenAiMiniDeployment": "gpt-4o-mini",
-    "OpenAiApiVersion": "2024-12-01-preview",
 
     "DocIntelligenceEndpoint": "https://<your-doc-intel-resource>.cognitiveservices.azure.com/",
 

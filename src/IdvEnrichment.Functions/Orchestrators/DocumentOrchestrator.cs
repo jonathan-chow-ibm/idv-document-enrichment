@@ -24,7 +24,9 @@ public sealed class DocumentOrchestrator
         try
         {
             var downloadUrl = await ctx.CallActivityAsync<string>(
-                "GetDocumentDownloadUrl", message, retry);
+                "GetDocumentDownloadUrl",
+                new GetDocumentDownloadUrlInput(message.DriveId, message.ItemId, message.FileUrl),
+                retry);
 
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
                 "ExtractContent", new ExtractContentInput(downloadUrl), retry);
