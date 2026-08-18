@@ -14,7 +14,7 @@ public sealed class GenerateBatchReportActivity
         var underReview = input.Results.Count(r => r.RoutingDecision == RoutingDecision.Review);
 
         var typeCounts = input.Results
-            .GroupBy(r => r.TypeClassification.DocumentType.ToString())
+            .GroupBy(r => r.DocumentType.ToString())
             .ToDictionary(g => g.Key, g => g.Count());
 
         var report = new BatchReport(

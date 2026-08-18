@@ -50,7 +50,8 @@ public sealed record QueueMessage(
 public sealed record BatchRequest(
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("label")] string? Label = null,
-    [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null);
+    [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null,
+    [property: JsonPropertyName("chunkSize")] int? ChunkSize = null);
 
 /// <summary>Resolved SharePoint target returned by the resolve activity.</summary>
 public sealed record ResolvedSharePointTarget(
@@ -126,6 +127,21 @@ public sealed record FilterProcessedInput(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
     [property: JsonPropertyName("batchId")] string BatchId);
 
+public sealed record ChunkRequest(
+    [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
+    [property: JsonPropertyName("batchId")] string BatchId,
+    [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
+    [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency);
+
+/// <summary>Slim projection passed from ChunkOrchestrator → BatchOrchestrator → GenerateBatchReport; excludes extracted text to avoid OOM at 100K scale.</summary>
+public sealed record BatchDocumentEntry(
+    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
+    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision);
+
+public sealed record ChunkResult(
+    [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
+    [property: JsonPropertyName("errors")] int Errors);
+
 public sealed record WriteMetadataInput(
     [property: JsonPropertyName("siteId")] string SiteId,
     [property: JsonPropertyName("driveId")] string DriveId,
@@ -141,7 +157,7 @@ public sealed record GenerateBatchReportInput(
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
-    [property: JsonPropertyName("results")] IReadOnlyList<EnrichmentResult> Results,
+    [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
     [property: JsonPropertyName("errors")] int Errors);
 
 // --- Agent 1: Document Type Classification ---

@@ -26,4 +26,7 @@ public sealed class PipelineSettings
 
     [Range(1, 100)]
     public int BatchMaxConcurrency { get; init; } = 10;
+
+    [Range(10, 10000)]
+    public int BatchChunkSize { get; init; } = 500;
 }

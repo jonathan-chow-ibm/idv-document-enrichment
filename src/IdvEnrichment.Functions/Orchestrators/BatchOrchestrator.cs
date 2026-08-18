@@ -36,54 +36,29 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         log.LogInformation("Batch {BatchId}: {Total} documents to process", batchId, unprocessed.Count);
 
         var maxConcurrency = input.MaxConcurrency ?? settings.Value.BatchMaxConcurrency;
-        var results = new List<EnrichmentResult>(unprocessed.Count);
-        var errors = 0;
+        var chunkSize = input.ChunkSize ?? settings.Value.BatchChunkSize;
         var startedAt = ctx.CurrentUtcDateTime;
 
-        for (var i = 0; i < unprocessed.Count; i += maxConcurrency)
-        {
-            var chunk = unprocessed.Skip(i).Take(maxConcurrency).ToList();
+        // Split into chunks; each chunk orchestrator keeps its own history bounded
+        var chunks = unprocessed
+            .Select((doc, i) => (doc, i))
+            .GroupBy(x => x.i / chunkSize)
+            .Select((g, i) => (Index: i, Docs: (IReadOnlyList<LibraryDocument>)g.Select(x => x.doc).ToList()))
+            .ToList();
 
-            // Process each document with its own try/catch to isolate failures
-            var chunkSuccesses = 0;
-            var chunkErrors = 0;
-            foreach (var doc in chunk)
-            {
-                try
-                {
-                    var result = await ctx.CallSubOrchestratorAsync<EnrichmentResult>(
-                        "DocumentProcessingOrchestrator",
-                        new QueueMessage(
-                            DocumentId: doc.Id,
-                            SiteId: target.SiteId,
-                            DriveId: target.DriveId,
-                            ItemId: doc.Id,
-                            FileName: doc.Name,
-                            FileUrl: doc.DownloadUrl,
-                            ContentType: doc.MimeType,
-                            ModifiedDateTime: doc.LastModifiedDateTime,
-                            Source: ProcessingSource.Batch,
-                            BatchId: batchId),
-                        new SubOrchestrationOptions { InstanceId = $"{batchId}:{doc.Id}" });
-                    results.Add(result);
-                    chunkSuccesses++;
-                }
-                catch (Exception)
-                {
-                    chunkErrors++;
-                }
-            }
+        ctx.SetCustomStatus(new { Phase = "processing", Chunks = chunks.Count, Total = unprocessed.Count });
 
-            errors += chunkErrors;
+        // Fan out all chunks in parallel; top-level history stays bounded to chunk count
+        var chunkTasks = chunks.Select(c =>
+            ctx.CallSubOrchestratorAsync<ChunkResult>(
+                "ChunkProcessingOrchestrator",
+                new ChunkRequest(c.Docs, batchId, target, maxConcurrency),
+                new SubOrchestrationOptions { InstanceId = $"{batchId}:chunk:{c.Index}" }));
 
-            ctx.SetCustomStatus(new
-            {
-                Processed = results.Count + errors,
-                Total = unprocessed.Count,
-                Errors = errors,
-                PercentComplete = Math.Round((results.Count + errors) / (double)unprocessed.Count * 100, 1),
-            });
-        }
+        var chunkResults = await Task.WhenAll(chunkTasks);
+
+        var results = chunkResults.SelectMany(r => r.Results).ToList();
+        var errors = chunkResults.Sum(r => r.Errors);
 
         return await ctx.CallActivityAsync<BatchReport>(
             "GenerateBatchReport",
