@@ -117,8 +117,8 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-4o'
-      version: '2024-11-20'
+      name: 'gpt-4o-mini'
+      version: '2024-07-18'
     }
   }
 }
@@ -176,7 +176,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       runtime: {
         name: 'dotnet-isolated'
-        version: '9.0'
+        version: '10.0'
       }
     }
     siteConfig: {
@@ -188,6 +188,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'OpenAiDeployment', value: openAiDeploymentName }
         { name: 'OpenAiMiniDeployment', value: openAiMiniDeploymentName }
         { name: 'DocIntelligenceEndpoint', value: docIntelligence.properties.endpoint }
+        { name: 'TaxonomyBlobUrl', value: '${storageAccount.properties.primaryEndpoints.blob}config/taxonomy.yaml' }
+        { name: 'BatchMaxConcurrency', value: '10' }
+        { name: 'BatchChunkSize', value: '500' }
       ]
     }
   }
@@ -199,6 +202,39 @@ resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-0
   scope: openAi
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// --- RBAC: Function App → Storage (Storage Blob Data Owner — required for AzureWebJobsStorage__accountName pattern) ---
+resource storageBlobOwnerRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b')
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// --- RBAC: Function App → Storage (Storage Queue Data Contributor — Durable Functions queues) ---
+resource storageQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '974c5e8b-45b9-4653-ba55-5f855dd0fb88')
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// --- RBAC: Function App → Storage (Storage Table Data Contributor — Durable + tracking table) ---
+resource storageTableRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, functionApp.id, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
