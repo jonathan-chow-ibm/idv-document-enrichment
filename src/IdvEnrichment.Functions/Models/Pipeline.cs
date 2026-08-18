@@ -80,11 +80,23 @@ public sealed record ExtractionResult(
     [property: JsonPropertyName("pageCount")] int PageCount,
     [property: JsonPropertyName("textLength")] int TextLength,
     [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs,
-    [property: JsonPropertyName("language")] string Language = "unknown");
+    [property: JsonPropertyName("language")] string Language = "unknown",
+    [property: JsonPropertyName("extractionMethod")] string ExtractionMethod = "document-intelligence")
+{
+    private const string UnsupportedMethod = "unsupported";
+
+    // Sentinel for formats that cannot be parsed; routes the document to human review.
+    public static ExtractionResult UnsupportedFormat(string fileName) =>
+        new(Text: $"[Unsupported format: {Path.GetExtension(fileName)}]",
+            PageCount: 0, TextLength: 0, KeyValuePairs: [], Language: "unknown",
+            ExtractionMethod: UnsupportedMethod);
+
+    public bool IsUnsupported => ExtractionMethod == UnsupportedMethod;
+}
 
 // --- Activity Inputs/Outputs ---
 
-public sealed record ExtractContentInput(string DocumentUrl);
+public sealed record ExtractContentInput(string DocumentUrl, string FileName = "");
 
 public sealed record GetDocumentDownloadUrlInput(
     [property: JsonPropertyName("driveId")] string DriveId,

@@ -45,6 +45,8 @@ var host = new HostBuilder()
 
         services.AddSingleton<TaxonomyLoader>();
 
+        services.AddHttpClient("spreadsheet", c => c.Timeout = TimeSpan.FromMinutes(5));
+
         services.AddSingleton(_ =>
         {
             var connectionString = context.Configuration["AzureWebJobsStorage"]
