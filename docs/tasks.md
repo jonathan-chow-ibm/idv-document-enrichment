@@ -34,16 +34,16 @@ Each task has an estimated effort and dependencies.
 
 | # | Task | Mode | Est. | Deps | Status |
 |---|------|------|------|------|--------|
-| 0.1 | Initialize .NET 10 Azure Functions isolated worker project with Durable Task extension | 🤖 | 30min | — | ⬜ |
-| 0.2 | Create `IdvEnrichment.Functions.csproj` with required NuGet packages (Azure.AI.OpenAI, Azure.AI.DocumentIntelligence, Microsoft.Graph, Durable Task worker extension, xUnit for tests) | 🤖 | 30min | 0.1 | ⬜ |
+| 0.1 | Initialize .NET 10 Azure Functions isolated worker project with Durable Task extension | 🤖 | 30min | — | ✅ |
+| 0.2 | Create `IdvEnrichment.Functions.csproj` with required NuGet packages (Azure.AI.OpenAI, Azure.AI.DocumentIntelligence, Microsoft.Graph, Durable Task worker extension, xUnit for tests) | 🤖 | 30min | 0.1 | ✅ |
 | 0.3 | Create C# records in `src/IdvEnrichment.Functions/Models/Pipeline.cs` for pipeline data contracts — `DocumentType` enum, `TypeClassificationResult`, `MetadataExtractionResult`, `SuggestedField`, `EnrichmentResult`, `QueueMessage`, `RoutingDecision` | 🤖 | 1h | 0.1 | ✅ |
-| 0.4 | Write Bicep modules: Resource Group, Storage Account, Function App (Consumption), App Insights, Key Vault | 🤖 | 1h | — | ⬜ `[P]` |
-| 0.5 | Write Bicep modules: Azure AI Document Intelligence (S0), Azure OpenAI Service + GPT-4o deployment + GPT-4o-mini deployment | 🤖 | 1h | — | ⬜ `[P]` |
-| 0.6 | Write `main.bicep` + `main.bicepparam` composing all modules, Managed Identity + RBAC assignments | 🤖 | 1h | 0.4, 0.5 | ⬜ |
+| 0.4 | Write Bicep modules: Resource Group, Storage Account, Function App (Consumption), App Insights, Key Vault | 🤖 | 1h | — | ✅ `[P]` |
+| 0.5 | Write Bicep modules: Azure AI Document Intelligence (S0), Azure OpenAI Service + GPT-4o deployment + GPT-4o-mini deployment | 🤖 | 1h | — | ✅ `[P]` |
+| 0.6 | Write `main.bicep` + `main.bicepparam` composing all modules, Managed Identity + RBAC assignments | 🤖 | 1h | 0.4, 0.5 | ✅ |
 | 0.7 | Create GitHub Actions CI workflow: format check (`dotnet format --verify-no-changes`), build (`dotnet build`), unit tests (`dotnet test`), Bicep validate | 🤖 | 1h | 0.1, 0.4 | ⬜ |
 | 0.8 | Create GitHub Actions CD workflow: deploy Bicep + deploy Function App (dev environment) | 🤖 | 1h | 0.7 | ⬜ |
-| 0.9 | Create `local.settings.example.json` with all required config keys documented | 🤖 | 30min | 0.1 | ⬜ |
-| 0.10 | Set up shared config binding (`Configuration/PipelineSettings.cs`) using `IOptions<PipelineSettings>` for env-based configuration | 🤖 | 1h | 0.3 | ⬜ |
+| 0.9 | Create `local.settings.example.json` with all required config keys documented | 🤖 | 30min | 0.1 | ✅ |
+| 0.10 | Set up shared config binding (`Configuration/PipelineSettings.cs`) using `IOptions<PipelineSettings>` for env-based configuration | 🤖 | 1h | 0.3 | ✅ |
 | 0.11 | Grant Graph API permissions to Function App Managed Identity — run `Grant-GraphPermissions.ps1` for `Sites.ReadWrite.All` (preferred, multi-site) or `Sites.Selected`, obtain admin consent | 👤 | 2h | — | ⬜ `[P]` |
 | 0.12 | Decide prompt/taxonomy deployment model — bundled with Function App package vs. external Blob Storage with separate deployment step; implement chosen approach in CD pipeline | 🤖👤 | 1.5h | 0.8 | ⬜ |
 
@@ -58,9 +58,9 @@ Each task has an estimated effort and dependencies.
 
 | # | Task | Mode | Est. | Deps | Status |
 |---|------|------|------|------|--------|
-| 1.1 | Implement `fetch_document` activity — fetch document binary from SharePoint via Graph API (Managed Identity auth) | 🤖 | 1h | 0.3, 0.10 | ⬜ |
-| 1.2 | Implement `extract_content` activity — call Document Intelligence Read API, poll for result, normalize output | 🤖 | 1h | 0.3, 0.10 | ⬜ `[P]` |
-| 1.3 | Implement text truncation utility (`Shared/TextUtils.cs`) — page-aware truncation for token budget management | 🤖 | 30min | — | ⬜ `[P]` |
+| 1.1 | Implement `fetch_document` activity — fetch document binary from SharePoint via Graph API (Managed Identity auth) | 🤖 | 1h | 0.3, 0.10 | ✅ |
+| 1.2 | Implement `extract_content` activity — call Document Intelligence Read API, poll for result, normalize output | 🤖 | 1h | 0.3, 0.10 | ✅ `[P]` |
+| 1.3 | Implement text truncation utility (`Shared/TextUtils.cs`) — page-aware truncation for token budget management | 🤖 | 30min | — | ✅ `[P]` |
 | 1.4 | Write unit tests for `extract_content` with mocked Document Intelligence responses | 🤖 | 30min | 1.2 | ⬜ |
 | 1.5 | Write unit tests for `fetch_document` with mocked Graph API responses | 🤖 | 30min | 1.1 | ⬜ `[P]` |
 | 1.6 | Write integration test: extract text from sample PDF using real Document Intelligence endpoint | 🤖 | 1h | 1.2, 0.5 | ⬜ |
@@ -81,10 +81,10 @@ Each task has an estimated effort and dependencies.
 | # | Task | Mode | Est. | Deps | Status |
 |---|------|------|------|------|--------|
 | 2.1 | **Taxonomy working sessions** — facilitate up to 3 sessions with client SMEs to define document types, per-type field schemas, common categories, and decision rules | 👤 | 6h | — | ⬜ |
-| 2.2 | Create hierarchical `taxonomy.yaml` v2.0 — document types with per-type fields, common metadata categories, allowed values, and examples | 🤖👤 | 2h | 2.1 | ⬜ |
-| 2.3 | Implement taxonomy loader (`Shared/TaxonomyLoader.cs`) — load hierarchical taxonomy YAML, expose document types, per-type schemas, and per-category confidence thresholds as typed objects | 🤖 | 1h | 2.2 | ⬜ |
-| 2.4 | Create Agent 1 classification prompt template (`Prompts/ClassifyType.hbs`) — using Handlebars.Net for templating; document type classification rules, taxonomy injection, output schema | 🤖👤 | 1h | 2.2 | ⬜ |
-| 2.5 | Implement `classify_type` activity — call GPT-4o-mini, parse type + confidence | 🤖 | 1h | 2.3, 2.4, 0.10 | ⬜ |
+| 2.2 | Create hierarchical `taxonomy.yaml` v2.0 — document types with per-type fields, common metadata categories, allowed values, and examples | 🤖👤 | 2h | 2.1 | ✅ |
+| 2.3 | Implement taxonomy loader (`Shared/TaxonomyLoader.cs`) — load hierarchical taxonomy YAML, expose document types, per-type schemas, and per-category confidence thresholds as typed objects | 🤖 | 1h | 2.2 | ✅ |
+| 2.4 | Create Agent 1 classification prompt template (`Prompts/ClassifyType.hbs`) — using Handlebars.Net for templating; document type classification rules, taxonomy injection, output schema | 🤖👤 | 1h | 2.2 | ✅ |
+| 2.5 | Implement `classify_type` activity — call GPT-4o-mini, parse type + confidence | 🤖 | 1h | 2.3, 2.4, 0.10 | ✅ |
 | 2.6 | Write unit tests for `classify_type` with mocked GPT-4o-mini responses (valid, malformed, edge cases) | 🤖 | 30min | 2.5 | ⬜ |
 | 2.7 | Create Agent 1 evaluation sample — 50-100 documents with labeled document types | 👤 | 4h | 2.1 | ⬜ `[P]` |
 | 2.8 | Evaluate Agent 1 accuracy — per-type accuracy, confusion analysis (target: >90% type classification) | 👤 | 3h | 2.5, 2.7 | ⬜ |
@@ -93,11 +93,11 @@ Each task has an estimated effort and dependencies.
 
 | # | Task | Mode | Est. | Deps | Status |
 |---|------|------|------|------|--------|
-| 2.9 | Create extraction prompt templates per document type (`Prompts/ExtractLease.hbs`, `Prompts/ExtractOfferMemo.hbs`, etc.) — ~10 templates | 🤖👤 | 4h | 2.2 | ⬜ |
-| 2.10 | Define Structured Output JSON schemas per document type — response_format schemas for GPT-4o | 🤖 | 30min | 2.2, 0.3 | ⬜ `[P]` |
-| 2.11 | Create shared user prompt template (`Prompts/UserDocument.hbs`) — document text + key-value pair formatting | 🤖 | 30min | — | ⬜ `[P]` |
-| 2.12 | Implement `extract_metadata` activity — load type-specific prompt + schema, call GPT-4o with Structured Outputs, return typed result | 🤖 | 1h | 2.3, 2.9, 2.10, 2.11, 0.10 | ⬜ |
-| 2.13 | Implement suggested fields parsing — validate and return additional discovered fields from Agent 2 response | 🤖 | 30min | 2.12, 0.3 | ⬜ |
+| 2.9 | Create extraction prompt templates per document type (`Prompts/ExtractLease.hbs`, `Prompts/ExtractOfferMemo.hbs`, etc.) — ~10 templates. _Implemented as single `ExtractMetadata.hbs` with dynamic per-type field injection from taxonomy; per-type templates deferred unless prompt tuning requires them._ | 🤖👤 | 4h | 2.2 | ✅ |
+| 2.10 | Define Structured Output JSON schemas per document type — response_format schemas for GPT-4o | 🤖 | 30min | 2.2, 0.3 | ✅ `[P]` |
+| 2.11 | Create shared user prompt template (`Prompts/UserDocument.hbs`) — document text + key-value pair formatting | 🤖 | 30min | — | ✅ `[P]` |
+| 2.12 | Implement `extract_metadata` activity — load type-specific prompt + schema, call GPT-4o with Structured Outputs, return typed result | 🤖 | 1h | 2.3, 2.9, 2.10, 2.11, 0.10 | ✅ |
+| 2.13 | Implement suggested fields parsing — validate and return additional discovered fields from Agent 2 response | 🤖 | 30min | 2.12, 0.3 | ✅ |
 | 2.14 | Write unit tests for `extract_metadata` — test each document type schema with mocked GPT-4o responses | 🤖 | 30min | 2.12, 2.13 | ⬜ |
 | 2.15 | Create Agent 2 evaluation sample — 50-100 documents with labeled per-type fields | 👤 | 4h | 2.1 | ⬜ `[P]` |
 | 2.16 | Evaluate Agent 2 per-field extraction accuracy — per-field accuracy per document type (target: >85% per field) | 👤 | 3h | 2.12, 2.15 | ⬜ |
@@ -124,19 +124,19 @@ Each task has an estimated effort and dependencies.
 
 | # | Task | Mode | Est. | Deps | Status |
 |---|------|------|------|------|--------|
-| 3.1 | Implement `document_processing_orchestrator` — Durable Functions orchestrator sequencing fetch → extract → classify_type → confidence gate → extract_metadata → route | 🤖 | 1h | 1.1, 1.2, 2.5, 2.12 | ⬜ |
-| 3.2 | Implement confidence routing logic (`route_result` activity) — evaluate BOTH type confidence (Agent 1) and per-field confidence (Agent 2) against taxonomy thresholds, set AIProcessingStatus to "Classified" or "Under Review" | 🤖 | 1h | 0.3, 2.2 | ⬜ `[P]` |
-| 3.3 | Implement `write_metadata` activity — write enrichment results + AIProcessingStatus to SharePoint document columns via Graph API (single activity handles both high-confidence and under-review writes) | 🤖 | 1h | 0.10 | ⬜ `[P]` |
-| 3.4 | Implement `resolve_sharepoint_target` activity — parse SharePoint URL into siteId + driveId + optional folderPath via Graph API | 🤖 | 1h | 0.10 | ⬜ `[P]` |
-| 3.5 | Implement HTTP trigger for batch (`/api/batch`) — accepts `BatchRequest(url)`, validates URL format, starts batch orchestrator | 🤖 | 1h | 3.8 | ⬜ |
-| 3.6 | Implement HTTP trigger for single doc (`/api/enrich`) — entry point for Power Automate trigger mode, validates payload, starts document orchestrator with dedup instance ID | 🤖 | 1h | 3.1 | ⬜ |
-| 3.7 | Implement AIProcessingStatus guard — check status via Graph API before starting orchestrator to prevent re-trigger loop (R1 fix) | 🤖 | 30min | 3.1, 3.6 | ⬜ |
-| 3.8 | Implement `batch_processing_orchestrator` — call resolve_sharepoint_target → enumerate_library → filter_processed → fan-out to sub-orchestrators → track progress → generate report → write report to Blob Storage | 🤖 | 1.5h | 3.1, 3.4 | ⬜ |
-| 3.9 | Implement `enumerate_library` activity — paginated Graph API query, supports library root or folder path, recurses into subfolders | 🤖 | 1h | 0.10 | ⬜ |
-| 3.10 | Implement `filter_processed` activity — check Azure Table Storage tracking table, skip already-processed documents | 🤖 | 1h | 0.10 | ⬜ |
-| 3.11 | Implement `generate_batch_report` activity — produce `BatchReport` (summary, confidence distribution, errors by step, doc type counts, cost), write JSON + HTML to Azure Blob Storage | 🤖 | 1h | 0.3 | ⬜ |
-| 3.12 | Implement error tracking — catch exceptions in orchestrator, write `ProcessingError` to Azure Table Storage, continue to next document | 🤖 | 30min | 0.3 | ⬜ |
-| 3.13 | Configure `host.json` — Durable Functions concurrency limits, queue settings, timeout, logging | 🤖 | 30min | 3.1 | ⬜ |
+| 3.1 | Implement `document_processing_orchestrator` — Durable Functions orchestrator sequencing fetch → extract → classify_type → confidence gate → extract_metadata → route | 🤖 | 1h | 1.1, 1.2, 2.5, 2.12 | ✅ |
+| 3.2 | Implement confidence routing logic (`route_result` activity) — evaluate BOTH type confidence (Agent 1) and per-field confidence (Agent 2) against taxonomy thresholds, set AIProcessingStatus to "Classified" or "Under Review" | 🤖 | 1h | 0.3, 2.2 | ✅ `[P]` |
+| 3.3 | Implement `write_metadata` activity — write enrichment results + AIProcessingStatus to SharePoint document columns via Graph API (single activity handles both high-confidence and under-review writes) | 🤖 | 1h | 0.10 | ✅ `[P]` |
+| 3.4 | Implement `resolve_sharepoint_target` activity — parse SharePoint URL into siteId + driveId + optional folderPath via Graph API | 🤖 | 1h | 0.10 | ✅ `[P]` |
+| 3.5 | Implement HTTP trigger for batch (`/api/batch`) — accepts `BatchRequest(url)`, validates URL format, starts batch orchestrator | 🤖 | 1h | 3.8 | ✅ |
+| 3.6 | Implement HTTP trigger for single doc (`/api/enrich`) — entry point for Power Automate trigger mode, validates payload, starts document orchestrator with dedup instance ID | 🤖 | 1h | 3.1 | ✅ |
+| 3.7 | Implement AIProcessingStatus guard — check status via Graph API before starting orchestrator to prevent re-trigger loop (R1 fix) | 🤖 | 30min | 3.1, 3.6 | ✅ |
+| 3.8 | Implement `batch_processing_orchestrator` — call resolve_sharepoint_target → enumerate_library → filter_processed → fan-out to sub-orchestrators → track progress → generate report → write report to Blob Storage | 🤖 | 1.5h | 3.1, 3.4 | ✅ |
+| 3.9 | Implement `enumerate_library` activity — paginated Graph API query, supports library root or folder path, recurses into subfolders | 🤖 | 1h | 0.10 | ✅ |
+| 3.10 | Implement `filter_processed` activity — check Azure Table Storage tracking table, skip already-processed documents | 🤖 | 1h | 0.10 | ✅ |
+| 3.11 | Implement `generate_batch_report` activity — produce `BatchReport` (summary, confidence distribution, errors by step, doc type counts, cost), write JSON + HTML to Azure Blob Storage | 🤖 | 1h | 0.3 | ✅ |
+| 3.12 | Implement error tracking — catch exceptions in orchestrator, write `ProcessingError` to Azure Table Storage, continue to next document | 🤖 | 30min | 0.3 | ✅ |
+| 3.13 | Configure `host.json` — Durable Functions concurrency limits, queue settings, timeout, logging | 🤖 | 30min | 3.1 | ✅ |
 | 3.14 | Write unit tests for orchestrator (mocked activities, test two-agent sequencing, confidence gate, error handling) | 🤖 | 1h | 3.1 | ⬜ |
 | 3.15 | Write integration test: single document end-to-end (local Functions + real Azure AI services) | 🤖 | 1h | 3.6 | ⬜ |
 | 3.16 | Write integration test: batch of 10 documents end-to-end via URL | 🤖 | 1h | 3.5 | ⬜ |
