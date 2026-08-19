@@ -30,6 +30,9 @@ param openAiMiniCapacity int = 60
 @description('Owner email tag required by Neudesic policy')
 param ownerEmail string = 'Jonathan.Chow@neudesic.com'
 
+@description('Set to false to skip model deployments when quota is not yet available')
+param deployModels bool = true
+
 // --- Naming ---
 var resourceToken = '${baseName}-${environmentName}'
 var tags = { Owner: ownerEmail }
@@ -90,7 +93,7 @@ resource openAi 'Microsoft.CognitiveServices/accounts@2024-04-01-preview' = {
   }
 }
 
-resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
+resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = if (deployModels) {
   parent: openAi
   name: openAiDeploymentName
   sku: {
@@ -106,7 +109,7 @@ resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024
   }
 }
 
-resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = {
+resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-04-01-preview' = if (deployModels) {
   parent: openAi
   name: openAiMiniDeploymentName
   dependsOn: [openAiDeployment]
@@ -117,8 +120,8 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-4o-mini'
-      version: '2024-07-18'
+      name: openAiModelName  // same model as Agent 2; mini unavailable in this region
+      version: openAiModelVersion
     }
   }
 }
@@ -191,6 +194,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'TaxonomyBlobUrl', value: '${storageAccount.properties.primaryEndpoints.blob}config/taxonomy.yaml' }
         { name: 'BatchMaxConcurrency', value: '10' }
         { name: 'BatchChunkSize', value: '500' }
+        { name: 'BatchReportsContainerUrl', value: '${storageAccount.properties.primaryEndpoints.blob}batch-reports' }
       ]
     }
   }

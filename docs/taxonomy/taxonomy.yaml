@@ -151,29 +151,12 @@ common_categories:
   - name: "Submarket"
     field_name: "submarket"
     sharepoint_column: "Submarket"
-    description: "The Houston-area submarket where the property is located"
-    allowed_values:
-      - label: "Northwest Houston"
-        description: "Highway 290 corridor, Willowbrook, Champions, Cypress"
-      - label: "North Houston"
-        description: "I-45 North corridor, Greenspoint, IAH Airport area"
-      - label: "Northeast Houston"
-        description: "I-10 East, Channelview, Baytown"
-      - label: "Katy/West Houston"
-        description: "I-10 West corridor, Energy Corridor, Katy"
-      - label: "Southwest Houston"
-        description: "Highway 59 South, Sugar Land, Missouri City"
-      - label: "Southeast Houston"
-        description: "I-45 South, La Marque, Texas City, Galveston"
-      - label: "Central Houston"
-        description: "Inner Loop, Midtown, East End"
-      - label: "Multiple"
-        description: "Document covers multiple submarkets"
-      - label: "Unknown"
-        description: "Submarket cannot be determined from document content"
+    description: "The geographic submarket or area where the property is located"
+    is_freetext: true
     decision_rules:
-      - "Use street addresses, highway references, and neighborhood names to determine submarket"
-      - "If a document covers a portfolio across submarkets, use 'Multiple'"
+      - "Extract the city, neighborhood, or submarket name from the document"
+      - "Use street addresses and area references to determine location"
+      - "If location cannot be determined, use 'Unknown'"
 
   - name: "Counterparty"
     field_name: "counterparty"
@@ -205,10 +188,10 @@ common_categories:
       - "When in doubt, classify UP (more restrictive), never down"
 
 confidence_thresholds:
-  agent1_classification: 0.80
+  agent1_classification: 0.50   # first pass: route to review only when truly uncertain
   agent2_common:
-    dealType: 0.75
-    submarket: 0.75
-    counterparty: 0.70
-    confidentiality: 0.85
-  agent2_specific_default: 0.80
+    dealType: 0.60
+    submarket: 0.00             # always unknown until client submarket list is populated
+    counterparty: 0.50
+    confidentiality: 0.00       # not reliably detectable from text; skip gating
+  agent2_specific_default: 0.50
