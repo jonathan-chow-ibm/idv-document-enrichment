@@ -1,29 +1,34 @@
-# Pipeline Design — Deep Dive
+# Pipeline Design — Technical Reference
+
+_Last updated: 2026-08-19. Reflects implemented code on branch `xlsx-native-parsing`._
+
+---
 
 ## 1. End-to-End Architecture
 
 ```mermaid
 graph TB
-    subgraph SharePoint["SharePoint Online"]
+    subgraph SharePoint["SharePoint Online (10 sites)"]
         DocLib["Document Libraries<br/>(Active Project Files)"]
-        MetaCols["Metadata Columns<br/>(Deal Type, Submarket, etc.)"]
+        MetaCols["Metadata Columns<br/>(DocumentType, DealType, Submarket, etc.)"]
     end
 
-    subgraph PowerAutomate["Power Automate Premium"]
-        TriggerFlow["Trigger Flow<br/>(on create/modify/move)"]
-        WriteBackFlow["Write-Back Flow<br/>(metadata → columns)"]
+    subgraph PowerAutomate["Power Automate Premium (not yet built)"]
+        TriggerFlow["Flow 1: Document Event Trigger<br/>(create / modify / move)"]
+        WriteBackFlow["Flow 2: Metadata Write-Back<br/>(trigger mode only)"]
     end
 
-    subgraph AzureFunctions["Azure Functions (Durable)"]
-        HTTPTrigger["HTTP Trigger<br/>(entry point)"]
-        QueueTrigger["Queue Trigger<br/>(batch entry point)"]
-        Orchestrator["Document Orchestrator<br/>(Durable)"]
-        BatchOrch["Batch Orchestrator<br/>(Durable, fan-out/fan-in)"]
-        ExtractActivity["Extract Content<br/>(Doc Intelligence)"]
-        ClassifyActivity["Agent 1: Classify Type<br/>(GPT-4o-mini)"]
-        ExtractMetaActivity["Agent 2: Extract Metadata<br/>(GPT-4o, Structured Outputs)"]
-        RouteActivity["Route Result<br/>(confidence check)"]
-        WriteBackActivity["Write-Back Activity<br/>(Graph API for batch)"]
+    subgraph AzureFunctions["Azure Functions (Durable, Flex Consumption)"]
+        HttpEnrich["POST /api/enrich<br/>(trigger mode)"]
+        HttpBatch["POST /api/batch<br/>(batch mode)"]
+        BatchOrch["BatchProcessingOrchestrator<br/>(splits into chunks)"]
+        ChunkOrch["ChunkProcessingOrchestrator ×N<br/>(parallel group)"]
+        DocOrch["DocumentProcessingOrchestrator<br/>(single doc)"]
+        ExtractActivity["ExtractContent<br/>(ClosedXML or Doc Intelligence)"]
+        ClassifyActivity["Agent 1: ClassifyType<br/>(GPT-4o-mini)"]
+        ExtractMetaActivity["Agent 2: ExtractMetadata<br/>(GPT-4o, Structured Outputs)"]
+        RouteActivity["RouteResult<br/>(confidence gate + telemetry)"]
+        WriteBackActivity["WriteMetadata<br/>(Graph API)"]
     end
 
     subgraph AIServices["Azure AI Services"]
@@ -33,16 +38,12 @@ graph TB
     end
 
     subgraph Storage["Azure Storage"]
-        Queue["Processing Queue"]
-        DurableStore["Durable Functions<br/>Task Hub (Tables + Blobs)"]
-        TaxonomyBlob["Taxonomy Config<br/>(Blob Storage)"]
-        PromptBlob["Prompt Templates<br/>(per document type)"]
+        DurableStore["Table + Blob Storage<br/>(Durable task hub + tracking table + batch reports)"]
+        TaxonomyBlob["Blob: config/taxonomy.yaml<br/>(cached in-memory on startup)"]
     end
 
     subgraph Monitoring["Observability"]
-        AppInsights["Application Insights"]
-        CostMgmt["Azure Cost Management"]
-        Alerts["Azure Monitor Alerts"]
+        AppInsights["Application Insights<br/>(DocumentEnriched custom events)"]
     end
 
     %% Trigger Flow
@@ -90,61 +91,155 @@ graph TB
 
 ## 2. Component Responsibilities
 
-### Azure Functions — Orchestration Engine
+### Orchestrators
 
 | Function | Type | Responsibility |
-|----------|------|---------------|
-| `http_trigger` | HTTP Trigger | Entry point for Power Automate trigger-mode calls. Validates payload, enqueues document for processing |
-| `queue_trigger` | Queue Trigger | Picks up documents from processing queue, starts orchestrator |
-| `document_orchestrator` | Durable Orchestrator | Sequences the extract → classify type → extract metadata → route pipeline for a single document. Handles retries, timeouts, compensation |
-| `batch_orchestrator` | Durable Orchestrator | Enumerates SharePoint library, fans-out documents to queue, tracks overall progress, produces batch report |
-| `extract_content` | Durable Activity | Calls Azure AI Document Intelligence Read API, polls for result, returns normalized text + key-value pairs |
-| `classify_type` | Durable Activity | **Agent 1 (Classifier).** Calls GPT-4o-mini, returns DocumentType + confidence + reasoning. Cheap, fast first pass to determine document type |
-| `extract_metadata` | Durable Activity | **Agent 2 (Extractor).** Loads type-specific prompt template + taxonomy based on Agent 1's output, calls GPT-4o with Structured Outputs, returns common fields + type-specific fields + suggested additional fields |
-| `route_result` | Durable Activity | Evaluates confidence on both type classification (Agent 1) and per-field extraction (Agent 2) against taxonomy thresholds, sets AIProcessingStatus to "Classified" or "Under Review" |
-| `write_metadata` | Durable Activity | Writes classification metadata to SharePoint columns via Microsoft Graph API (used in batch mode) |
-| `generate_batch_report` | Durable Activity | Produces batch-tagging results report (coverage, confidence distribution, under-review count, cost breakdown) |
+|---|---|---|
+| `BatchProcessingOrchestrator` | Durable Orchestrator | Resolves SP target, enumerates library, filters processed, splits into chunks of `BatchChunkSize` (default 500), fans all chunks out in parallel via `Task.WhenAll`. History bounded to ~200 entries for 100K docs. |
+| `ChunkProcessingOrchestrator` | Durable Orchestrator | Receives a slice of documents. Processes them in parallel groups of `BatchMaxConcurrency` (default 10) via `Task.WhenAll`. Returns `ChunkResult` — slim `BatchDocumentEntry` projections (DocumentType + RoutingDecision only, no extracted text — avoids OOM at aggregation). |
+| `DocumentProcessingOrchestrator` | Durable Orchestrator | Sequences the full pipeline for a single document: GetDownloadUrl → ExtractContent → ClassifyType → confidence gate → ExtractMetadata → RouteResult → WriteMetadata → RecordProcessingResult. All activities retry 3× with exponential backoff. |
 
-### Power Automate Premium — Glue Layer
+### Activities
 
-| Flow | Trigger | Responsibility |
-|------|---------|---------------|
-| `Document-Created-Modified` | SharePoint: When a file is created or modified | Detects new/modified documents, calls HTTP trigger on Azure Function with document URL and metadata |
-| `Write-Back-Metadata` | HTTP request (called by Azure Function) | Receives classified metadata from Azure Function, writes to SharePoint list item columns |
+| Function | Responsibility |
+|---|---|
+| `GetDocumentDownloadUrl` | Resolves pre-authenticated download URL via Graph API. Passes through non-SharePoint URLs (test mode). |
+| `ExtractContent` | **Branches on file extension.** `.xlsx`/`.xlsm` → ClosedXML markdown serialization. `.xls`/`.xlsb` → UnsupportedFormat sentinel. All other formats → Azure AI Document Intelligence (`prebuilt-layout`, Markdown output). |
+| `ClassifyType` | **Agent 1 (GPT-4o-mini).** Renders `ClassifyType.hbs` + `UserDocument.hbs` with taxonomy and truncated text (4K chars). Returns `DocumentType`, `Confidence`, `Reasoning`. |
+| `GetTypeConfidenceThreshold` | Looks up per-type confidence threshold from taxonomy. |
+| `ExtractMetadata` | **Agent 2 (GPT-4o Structured Outputs).** Renders `ExtractMetadata.hbs` with type-specific fields from taxonomy. Builds JSON schema dynamically via `MetadataSchemaBuilder`. Returns common fields + type-specific fields + suggested fields, each with value/confidence/reasoning. |
+| `RouteResult` | Evaluates per-field confidence against taxonomy thresholds. Sets routing decision (`Write`/`Review`). Emits `DocumentEnriched` custom event to App Insights. |
+| `WriteMetadata` | Writes metadata to SharePoint via `PATCH /drives/{driveId}/items/{itemId}/listItem/fields`. |
+| `RecordProcessingResult` | Writes `"success"` or `"review"` to Azure Table Storage tracking table. Used by FilterProcessed to skip re-processing. |
+| `ResolveSharePointTarget` | Parses SharePoint URL into siteId + driveId + optional folderPath via Graph API. |
+| `EnumerateLibrary` | Paginated Graph API query across all subfolders. Filters to: `.pdf`, `.docx`, `.doc`, `.xlsx`, `.xlsm`, `.pptx`, `.txt`. |
+| `FilterProcessed` | Drops documents already in the Table Storage tracking table. |
+| `GenerateBatchReport` | Aggregates `BatchDocumentEntry` list into counts by routing decision and document type. Writes `BatchReport` JSON to Blob Storage. |
 
-### Azure AI Document Intelligence
+### Shared Utilities
 
-- **Model:** Prebuilt Read model (upgrade to Layout if table extraction needed)
-- **API Version:** 2024-11-30 (GA)
-- **Input:** Document URL or binary content
-- **Output:** Extracted text (pages, lines, words), key-value pairs, language detection
-- **Rate limit:** 15 requests/sec (S0 tier)
+| Class | Responsibility |
+|---|---|
+| `TaxonomyLoader` | Loads `taxonomy.yaml` from Blob Storage (or local path for dev) and caches via `Lazy<Task<TaxonomyData>>`. |
+| `PromptRenderer` | Compiles Handlebars templates (embedded resources) at startup. Renders `ClassifyType.hbs`, `ExtractMetadata.hbs`, `UserDocument.hbs`. |
+| `MetadataSchemaBuilder` | Builds GPT-4o Structured Output JSON schema dynamically from taxonomy field definitions. Schema updates when taxonomy changes — no code change needed. |
+| `SpreadsheetExtractor` | ClosedXML-based XLSX/XLSM parser. 50 MB size guard. Serializes each worksheet as a Markdown table with sheet-name header. |
+| `TextUtils` | Page-aware text truncation using `<!-- PageBreak -->` markers, falling back to sentence boundary, then hard cut. |
 
-### Azure OpenAI
+### Entry Points (HTTP Triggers)
 
-#### Agent 1 — Classifier (GPT-4o-mini)
+| Endpoint | Mode | Notes |
+|---|---|---|
+| `POST /api/enrich` | Trigger | Checks `AIProcessingStatus` via Graph API — skips `Classified`/`Reviewed` documents. Deterministic instance ID: `trigger:{siteId}:{itemId}:{modifiedDateTime}`. |
+| `POST /api/batch` | Batch | Validates URL, schedules `BatchProcessingOrchestrator`. Accepts optional `maxConcurrency` and `chunkSize` overrides. |
 
-- **Model:** GPT-4o-mini
-- **API:** Chat Completions
-- **Input:** System prompt (document type taxonomy) + user prompt (extracted document text)
-- **Output:** DocumentType + confidence + reasoning (single-field classification)
-- **Rate limit:** Varies by deployment (request TPM increase for batch)
-- **Cost note:** ~10× cheaper than GPT-4o; handles the high-volume classification pass
+---
 
-#### Agent 2 — Extractor (GPT-4o)
+## 3. Content Extraction — XLSX Branch
 
-- **Model:** GPT-4o
-- **API:** Chat Completions with Structured Outputs (`response_format: { type: "json_schema" }`)
-- **Input:** Type-specific system prompt (loaded per document type from Blob Storage) + taxonomy + extracted document text
-- **Output:** Common fields (deal type, submarket, counterparty, confidentiality) + type-specific fields + suggested additional fields, each with per-field confidence and reasoning
-- **Rate limit:** Varies by deployment (request TPM increase for batch)
-- **Schema:** Different JSON schema per document type, enforced by Structured Outputs (eliminates parse failures)
-- **Skip condition:** Not invoked for "Other" type or when Agent 1 confidence is below threshold (routes directly to review)
-- **Cost note:** Two calls per document (Agent 1 + Agent 2) costs roughly the same as the original single-prompt GPT-4o approach. The value is richer type-specific metadata, not cost reduction. Cost reduction comes from GPT-4o-mini validation in Phase 5 and potential Batch API adoption.
+Azure AI Document Intelligence accepts `.xlsx` but flattens structure into unstructured text, discarding sheet boundaries, headers, and formula-evaluated values. For financial workbooks (pro formas, rent rolls, T-12s) this produces low-confidence extractions. See [ADR-007](../decisions/adr-007-xlsx-native-parsing.md).
 
-## 3. Data Contracts
+**Extension-based routing in `ExtractContentActivity`:**
 
-### Queue Message (Processing Queue)
+| Extension | Handler | Rationale |
+|---|---|---|
+| `.xlsx`, `.xlsm` | ClosedXML | Preserves sheet names, headers, formula-evaluated values as Markdown tables |
+| `.xls`, `.xlsb` | UnsupportedFormat sentinel | Binary formats not readable by ClosedXML — route to human review |
+| All other formats | Document Intelligence | PDF, DOCX, PPTX, TXT — unchanged path |
+
+**ClosedXML output format:**
+
+```markdown
+## Sheet: Pro Forma
+
+| Item | Year 1 | Year 2 | Year 3 |
+|---|---|---|---|
+| Gross Revenue | $1,250,000 | $1,312,500 | $1,378,125 |
+...
+
+## Sheet: Assumptions
+...
+```
+
+This markdown flows into Agent 1 and Agent 2 unchanged — the downstream contract is already Markdown from the Doc Intelligence path.
+
+**Known limitation:** complex workbooks with merged cells or spatial layouts may still produce low-confidence extractions. The `extractionMethod` field in App Insights telemetry enables comparison. Escalation path: Azure AI Foundry agent with Code Interpreter. See ADR-007.
+
+---
+
+## 4. Batch Scale Design
+
+Designed for 100K+ documents. Durable Functions orchestration history is bounded at two levels.
+
+```
+BatchProcessingOrchestrator  (1 instance)
+  History: ~200 entries  (100K ÷ chunkSize 500)
+  │
+  └── ChunkProcessingOrchestrator ×200  (all in parallel, Task.WhenAll)
+        History: ≤500 entries per chunk
+        │
+        └── DocumentProcessingOrchestrator ×10  (parallel group, Task.WhenAll)
+```
+
+**Configuration:**
+
+| Setting | Default | Description |
+|---|---|---|
+| `BatchChunkSize` | 500 | Documents per chunk orchestrator |
+| `BatchMaxConcurrency` | 10 | Parallel docs per group within a chunk |
+| Effective throughput ceiling | ~100 docs/min | GPT-4o TPM quota at 300K TPM — not concurrency |
+
+**Why not queue-triggered functions?** Durable activity replay means only the failed step retries — not the full pipeline including the paid Agent 1 call. Over 100K documents this matters.
+
+---
+
+## 5. Taxonomy — Config-Driven Design
+
+`docs/taxonomy/taxonomy.yaml` (deployed to `{storage}/config/taxonomy.yaml`) is the single source of truth for document types, field schemas, and confidence thresholds. Cached in-memory on startup via `Lazy<Task<TaxonomyData>>`.
+
+**To add a new document type:**
+1. Add entry to `taxonomy.yaml`
+2. Add to `DocumentType` enum in `Pipeline.cs` — the one required code change
+3. Upload updated taxonomy to Blob Storage
+4. Restart Function App (`az functionapp restart`)
+
+**To add/change fields or thresholds:** update taxonomy only — no code change. `MetadataSchemaBuilder` generates the GPT-4o schema dynamically.
+
+---
+
+## 6. Observability — App Insights Custom Events
+
+`RouteResult` emits `DocumentEnriched` per document. All events captured at 100% (excluded from sampling in `host.json`).
+
+**Fixed properties:** `documentType`, `routingDecision`, `extractionMethod`, `source`, `batchId`, `fileName`
+
+**Fixed metrics:** `typeConfidence`, `dealTypeConfidence`, `submarketConfidence`, `counterpartyConfidence`, `confidentialityConfidence`, `pageCount`, `textLength`
+
+**Dynamic metrics** (adapts to taxonomy automatically): `field_{name}_confidence` for every type-specific field returned by Agent 2.
+
+**Example KQL:**
+
+```kusto
+// Average confidence by document type
+customEvents
+| where name == "DocumentEnriched"
+| summarize
+    avgConfidence = avg(todouble(customMeasurements.typeConfidence)),
+    reviewRate = countif(tostring(customDimensions.routingDecision) == "Review") * 100.0 / count()
+  by documentType = tostring(customDimensions.documentType)
+| order by avgConfidence asc
+
+// Extraction method breakdown
+customEvents
+| where name == "DocumentEnriched"
+| summarize count() by tostring(customDimensions.extractionMethod)
+```
+
+---
+
+## 7. Data Contracts
+
+### QueueMessage
 
 ```json
 {
@@ -199,7 +294,7 @@ graph TB
 
 Low-confidence documents receive the same metadata columns as high-confidence documents, with `AIProcessingStatus = "Under Review"`. SMEs review via a filtered library view. See [ADR-006](../decisions/adr-006-inline-review.md).
 
-## 4. Error Handling & Retry Strategy
+## 8. Error Handling & Retry Strategy
 
 ```mermaid
 flowchart TD
@@ -243,41 +338,26 @@ flowchart TD
 | `route_result` | 2 | Fixed | 2 sec | 30 sec |
 | `write_metadata` | 3 | Exponential | 5 sec | 30 sec |
 
-## 5. Observability
+## 9. Security
 
-### Application Insights Custom Metrics
+| Concern | Implementation |
+|---|---|
+| Azure resource access | System-assigned Managed Identity with RBAC: Cognitive Services OpenAI User, Cognitive Services User, Storage Blob Data Owner, Storage Queue/Table Contributor, Key Vault Secrets User |
+| SharePoint access | Graph API application permission `Sites.ReadWrite.All` granted to Managed Identity via `Grant-GraphPermissions.ps1` (requires tenant Global Administrator) |
+| Local development | `DefaultAzureCredential` falls back to Azure CLI token (`az login`) — no secrets in code |
+| Macro-enabled workbooks | ClosedXML reads XML parts only — VBA is never loaded or executed |
+| Corrupt/malformed files | Caught (`InvalidDataException`, `IOException`, `XmlException`) and routed to review — never thrown as unhandled exceptions |
+| Secrets | No secrets in code; all endpoints injected as app settings by Bicep from resource outputs |
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `documents.processed` | Counter | Total documents processed (tagged: source=trigger|batch, result=success|review|failed) |
-| `documents.extraction.duration` | Histogram | Document Intelligence call duration |
-| `documents.classification.duration` | Histogram | Agent 1 (Classifier) call duration |
-| `documents.extraction.metadata.duration` | Histogram | Agent 2 (Extractor) call duration |
-| `documents.classification.confidence` | Histogram | Agent 1 type classification confidence |
-| `documents.metadata.field.confidence` | Histogram | Agent 2 per-field extraction confidence |
-| `documents.metadata.suggested_fields.count` | Counter | Number of suggested additional fields discovered by Agent 2 |
-| `documents.under_review.count` | Gauge | Documents with AIProcessingStatus = "Under Review" |
-| `documents.batch.progress` | Gauge | Batch completion percentage |
-| `documents.cost.extraction` | Counter | Estimated Document Intelligence cost |
-| `documents.cost.classification` | Counter | Estimated GPT-4o-mini token cost (Agent 1) |
-| `documents.cost.metadata_extraction` | Counter | Estimated GPT-4o token cost (Agent 2) |
+---
 
-### Alerts
+## 10. Not Yet Implemented
 
-| Alert | Condition | Severity | Action |
-|-------|-----------|----------|--------|
-| High failure rate | >10% failures in 15 min window | Critical | Page on-call |
-| Under review growing | Docs with AIProcessingStatus="Under Review" >100 | Warning | Notify SME team; consider adjusting thresholds |
-| Rate limit sustained | >5 min of continuous 429s | Warning | Reduce concurrency |
-| Batch stalled | No progress for >30 min | Critical | Investigate |
-| Cost threshold | Daily spend >$200 | Warning | Review and potentially pause |
-
-## 6. Security
-
-- **Authentication:** Azure Functions use Managed Identity to call Document Intelligence, OpenAI, and Graph API
-- **SharePoint access:** Application permissions (Sites.ReadWrite.All) scoped to specific site collections via Sites.Selected
-- **Secrets:** Connection strings and API keys stored in Azure Key Vault, referenced via App Configuration
-- **Network:** Azure Functions on Premium plan with VNet integration (if required by client security posture)
-- **Data in transit:** All API calls over HTTPS/TLS 1.2+
-- **Data at rest:** Document content is transient (not persisted in pipeline storage); only metadata flows through
-- **RBAC:** Separate roles for pipeline admin (deploy, configure) and taxonomy admin (update categories)
+| Item | Notes |
+|---|---|
+| Power Automate flows | Trigger flow + write-back flow — human-only work (tasks 4.2, 4.3) |
+| Multi-site trigger strategy | 10 sites in scope; polling vs webhook decision pending client input on latency requirements |
+| SharePoint column provisioning | `Provision-SharePointSchema.ps1` — deferred until taxonomy sessions finalize field set |
+| Content type provisioning | Planned with PnP PowerShell; deferred until schema is stable |
+| Unit + integration tests | No test project exists yet |
+| Prompt tuning | Requires real documents and SME evaluation samples (tasks 2.17–2.19) |
