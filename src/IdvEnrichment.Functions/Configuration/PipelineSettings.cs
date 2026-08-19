@@ -29,4 +29,7 @@ public sealed class PipelineSettings
 
     [Range(10, 10000)]
     public int BatchChunkSize { get; init; } = 500;
+
+    // accepts https://{account}.blob.core.windows.net/batch-reports or empty to skip blob write
+    public string BatchReportsContainerUrl { get; init; } = string.Empty;
 }

@@ -62,7 +62,10 @@ public sealed class ChunkOrchestrator
                     BatchId: input.BatchId),
                 new SubOrchestrationOptions { InstanceId = $"{input.BatchId}:{doc.Id}" });
 
-            return (new BatchDocumentEntry(result.TypeClassification.DocumentType, result.RoutingDecision), true);
+            return (new BatchDocumentEntry(
+                result.TypeClassification.DocumentType,
+                result.RoutingDecision,
+                result.TypeClassification.Confidence), true);
         }
         catch (OperationCanceledException)
         {

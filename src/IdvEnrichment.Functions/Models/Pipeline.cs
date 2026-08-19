@@ -136,7 +136,8 @@ public sealed record ChunkRequest(
 /// <summary>Slim projection passed from ChunkOrchestrator → BatchOrchestrator → GenerateBatchReport; excludes extracted text to avoid OOM at 100K scale.</summary>
 public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("documentType")] DocumentType DocumentType,
-    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision);
+    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
+    [property: JsonPropertyName("typeConfidence")] double TypeConfidence);
 
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,

@@ -12,6 +12,8 @@
 
     "TaxonomyBlobUrl": "../../docs/taxonomy/taxonomy.yaml",
     "ConfidenceThresholdDefault": "0.80",
-    "BatchMaxConcurrency": "10"
+    "BatchMaxConcurrency": "10",
+    "BatchChunkSize": "500",
+    "BatchReportsContainerUrl": ""
   }
 }
