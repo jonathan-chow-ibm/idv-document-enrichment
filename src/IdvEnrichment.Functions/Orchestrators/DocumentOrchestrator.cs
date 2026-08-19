@@ -24,15 +24,41 @@ public sealed class DocumentOrchestrator
         try
         {
             var downloadUrl = await ctx.CallActivityAsync<string>(
-                "GetDocumentDownloadUrl", message, retry);
+                "GetDocumentDownloadUrl",
+                new GetDocumentDownloadUrlInput(message.DriveId, message.ItemId, message.FileUrl),
+                retry);
 
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
-                "ExtractContent", new ExtractContentInput(downloadUrl), retry);
+                "ExtractContent", new ExtractContentInput(downloadUrl, message.FileName), retry);
+
+            if (extraction.IsUnsupported)
+            {
+                var unsupportedResult = new EnrichmentResult(
+                    DocumentId: message.DocumentId,
+                    FileName: message.FileName,
+                    Extraction: extraction,
+                    TypeClassification: new TypeClassificationResult(DocumentType.Other, 0.0, "Unsupported file format"),
+                    Metadata: null,
+                    ProcessingMetrics: new ProcessingMetrics(),
+                    RoutingDecision: RoutingDecision.Review,
+                    LowConfidenceCategories: ["format"]);
+
+                await ctx.CallActivityAsync(
+                    "WriteMetadata",
+                    new WriteMetadataInput(message.SiteId, message.DriveId, message.ItemId, unsupportedResult),
+                    retry);
+
+                await ctx.CallActivityAsync(
+                    "RecordProcessingResult",
+                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, "review"),
+                    retry);
+
+                return unsupportedResult;
+            }
 
             var typeClassification = await ctx.CallActivityAsync<TypeClassificationResult>(
                 "ClassifyType",
-                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
-                retry);
+                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs));
 
             var typeThreshold = await ctx.CallActivityAsync<double>(
                 "GetTypeConfidenceThreshold", typeClassification.DocumentType, retry);
@@ -50,8 +76,7 @@ public sealed class DocumentOrchestrator
                         message.FileName,
                         typeClassification.DocumentType,
                         extraction.Text,
-                        extraction.KeyValuePairs),
-                    retry);
+                        extraction.KeyValuePairs));
             }
 
             var enrichmentResult = await ctx.CallActivityAsync<EnrichmentResult>(

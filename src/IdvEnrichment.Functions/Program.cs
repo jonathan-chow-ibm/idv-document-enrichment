@@ -3,6 +3,7 @@ using Azure.AI.OpenAI;
 using Azure.Core;
 using Azure.Data.Tables;
 using Azure.Identity;
+using Azure.Storage.Blobs;
 using IdvEnrichment.Functions.Configuration;
 using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
@@ -44,6 +45,16 @@ var host = new HostBuilder()
         });
 
         services.AddSingleton<TaxonomyLoader>();
+
+        services.AddSingleton(sp =>
+        {
+            var settings = sp.GetRequiredService<IOptions<PipelineSettings>>().Value;
+            return string.IsNullOrEmpty(settings.BatchReportsContainerUrl)
+                ? null!
+                : new BlobContainerClient(new Uri(settings.BatchReportsContainerUrl), credential);
+        });
+
+        services.AddHttpClient("spreadsheet", c => c.Timeout = TimeSpan.FromMinutes(5));
 
         services.AddSingleton(_ =>
         {

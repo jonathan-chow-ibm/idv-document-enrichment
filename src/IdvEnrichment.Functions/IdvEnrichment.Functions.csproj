@@ -35,6 +35,7 @@
 
     <PackageReference Include="Handlebars.Net" Version="2.4.3" />
     <PackageReference Include="YamlDotNet" Version="16.2.0" />
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,197 @@
+version: "2.0"
+last_updated: "2026-08-13"
+approved_by: "Client SME Team"
+
+document_types:
+  - label: "Lease Agreement"
+    description: "Executed or draft lease contract"
+    specific_fields:
+      - name: tenant
+        description: "The tenant / lessee named in the lease"
+      - name: landlord
+        description: "The landlord / lessor named in the lease"
+      - name: leaseTerm
+        description: "Duration of the lease (e.g., '5 years', '60 months')"
+      - name: rentalRate
+        description: "Base rental rate (e.g., '$24.50/SF NNN')"
+      - name: squareFootage
+        description: "Leased square footage"
+      - name: commencementDate
+        description: "Lease commencement date"
+      - name: expirationDate
+        description: "Lease expiration date"
+
+  - label: "Offer Memorandum"
+    description: "Property marketing package with financials and property details"
+    specific_fields:
+      - name: propertyName
+        description: "Name of the property being marketed"
+      - name: askingPrice
+        description: "Listed asking price"
+      - name: capRate
+        description: "Capitalization rate"
+      - name: noi
+        description: "Net operating income"
+      - name: squareFootage
+        description: "Total building square footage"
+      - name: propertyType
+        description: "Property type (e.g., Industrial, Office, Retail)"
+
+  - label: "Market Report"
+    description: "Broker market research, quarterly reports, or market surveys"
+    specific_fields:
+      - name: reportPeriod
+        description: "Time period covered (e.g., 'Q2 2024')"
+      - name: marketArea
+        description: "Geographic market area covered"
+      - name: vacancyRate
+        description: "Reported vacancy rate"
+      - name: absorption
+        description: "Net absorption figure"
+      - name: avgRentalRate
+        description: "Average rental rate reported"
+
+  - label: "Purchase Agreement"
+    description: "Executed or draft purchase/sale contract"
+    specific_fields:
+      - name: buyer
+        description: "Buyer / purchaser entity"
+      - name: seller
+        description: "Seller entity"
+      - name: purchasePrice
+        description: "Agreed purchase price"
+      - name: closingDate
+        description: "Scheduled closing date"
+      - name: earnestMoney
+        description: "Earnest money deposit amount"
+
+  - label: "Letter of Intent"
+    description: "LOI for lease or purchase"
+    specific_fields:
+      - name: proposedTermsSummary
+        description: "Summary of key proposed terms"
+      - name: responseDeadline
+        description: "Deadline for response or acceptance"
+      - name: parties
+        description: "Named parties to the LOI"
+
+  - label: "Financial Analysis"
+    description: "Pro forma, IRR analysis, cash flow projections"
+    specific_fields:
+      - name: propertyName
+        description: "Property being analyzed"
+      - name: irr
+        description: "Internal rate of return"
+      - name: cashOnCash
+        description: "Cash-on-cash return"
+      - name: holdPeriod
+        description: "Projected hold period"
+
+  - label: "Due Diligence"
+    description: "Environmental reports, surveys, title documents, inspections"
+    specific_fields:
+      - name: propertyAddress
+        description: "Address of the subject property"
+      - name: reportType
+        description: "Type of due diligence report (e.g., Phase I ESA, Survey)"
+      - name: findingsSummary
+        description: "Summary of key findings"
+
+  - label: "Correspondence"
+    description: "Emails, letters, memos"
+    specific_fields:
+      - name: sender
+        description: "Person or entity who sent the correspondence"
+      - name: recipient
+        description: "Person or entity receiving the correspondence"
+      - name: subject
+        description: "Subject line or topic"
+      - name: date
+        description: "Date of the correspondence"
+
+  - label: "Presentation"
+    description: "Pitch decks, investment committee presentations"
+    specific_fields:
+      - name: audience
+        description: "Intended audience (e.g., 'Investment Committee')"
+      - name: topic
+        description: "Presentation topic or title"
+      - name: date
+        description: "Presentation date"
+
+  - label: "Other"
+    description: "Does not fit above categories"
+    specific_fields: []
+
+common_categories:
+  - name: "Deal Type"
+    field_name: "dealType"
+    sharepoint_column: "DealType"
+    description: "The type of real estate transaction or activity described in the document"
+    allowed_values:
+      - label: "Lease"
+        description: "Lease agreement, lease proposal, or lease-related correspondence"
+      - label: "Sale"
+        description: "Purchase/sale agreement, offering memorandum, or sales-related document"
+      - label: "Development"
+        description: "New construction, ground-up development, or build-to-suit project"
+      - label: "Acquisition"
+        description: "Property acquisition, due diligence, or investment analysis"
+      - label: "Disposition"
+        description: "Property disposition, marketing package, or exit strategy"
+      - label: "Financing"
+        description: "Loan documents, financing proposals, or debt-related materials"
+      - label: "Other"
+        description: "Does not clearly fit any above category"
+    decision_rules:
+      - "If a document discusses both lease and sale terms, classify by the PRIMARY transaction"
+      - "Offering memorandums are typically 'Sale' unless explicitly a lease proposal"
+      - "Development pipeline reports are 'Development' even if they mention future leasing"
+
+  - name: "Submarket"
+    field_name: "submarket"
+    sharepoint_column: "Submarket"
+    description: "The geographic submarket or area where the property is located"
+    is_freetext: true
+    decision_rules:
+      - "Extract the city, neighborhood, or submarket name from the document"
+      - "Use street addresses and area references to determine location"
+      - "If location cannot be determined, use 'Unknown'"
+
+  - name: "Counterparty"
+    field_name: "counterparty"
+    sharepoint_column: "Counterparty"
+    description: "The external company, broker, or entity involved in the transaction"
+    is_freetext: true
+    decision_rules:
+      - "Extract the company name from letterhead, signature blocks, or broker identification"
+      - "For brokerage reports, use the brokerage firm name (e.g., 'CBRE', 'JLL')"
+      - "If no counterparty can be identified, use 'Unknown'"
+
+  - name: "Confidentiality"
+    field_name: "confidentiality"
+    sharepoint_column: "Confidentiality"
+    description: "The confidentiality classification of the document"
+    allowed_values:
+      - label: "Public"
+        description: "No confidentiality restrictions; publicly available information"
+      - label: "Internal"
+        description: "For internal use only; standard business documents"
+      - label: "Confidential"
+        description: "Contains confidentiality notices, NDA-covered material, or sensitive financial terms"
+      - label: "Highly Confidential"
+        description: "Contains trade secrets, executive compensation, litigation material"
+    decision_rules:
+      - "Look for explicit confidentiality notices, watermarks, or disclaimers"
+      - "Executed agreements with financial terms are at minimum 'Confidential'"
+      - "If no confidentiality indicators present, default to 'Internal'"
+      - "When in doubt, classify UP (more restrictive), never down"
+
+confidence_thresholds:
+  agent1_classification: 0.50   # first pass: route to review only when truly uncertain
+  agent2_common:
+    dealType: 0.60
+    submarket: 0.00             # always unknown until client submarket list is populated
+    counterparty: 0.50
+    confidentiality: 0.00       # not reliably detectable from text; skip gating
+  agent2_specific_default: 0.50

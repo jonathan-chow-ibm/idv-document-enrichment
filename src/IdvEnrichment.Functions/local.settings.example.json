@@ -7,12 +7,13 @@
     "OpenAiEndpoint": "https://<your-openai-resource>.openai.azure.com/",
     "OpenAiDeployment": "gpt-4o",
     "OpenAiMiniDeployment": "gpt-4o-mini",
-    "OpenAiApiVersion": "2024-12-01-preview",
 
     "DocIntelligenceEndpoint": "https://<your-doc-intel-resource>.cognitiveservices.azure.com/",
 
-    "TaxonomyBlobUrl": "",
+    "TaxonomyBlobUrl": "../../docs/taxonomy/taxonomy.yaml",
     "ConfidenceThresholdDefault": "0.80",
-    "BatchMaxConcurrency": "10"
+    "BatchMaxConcurrency": "10",
+    "BatchChunkSize": "500",
+    "BatchReportsContainerUrl": ""
   }
 }

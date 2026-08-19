@@ -30,19 +30,21 @@ public sealed class ExtractMetadataActivity(
 
         var schema = MetadataSchemaBuilder.BuildSchema(input.DocumentType, taxonomy);
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiDeployment);
-        var completion = await chatClient.CompleteChatAsync(
-            [
-                new SystemChatMessage(systemPrompt),
-                new UserChatMessage(userPrompt),
-            ],
-            new ChatCompletionOptions
-            {
-                ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
-                    "metadata",
-                    schema,
-                    jsonSchemaIsStrict: true),
-            },
-            ct);
+        var completion = await OpenAiRetryHelper.ExecuteWithRetryAsync(
+            () => chatClient.CompleteChatAsync(
+                [
+                    new SystemChatMessage(systemPrompt),
+                    new UserChatMessage(userPrompt),
+                ],
+                new ChatCompletionOptions
+                {
+                    ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                        "metadata",
+                        schema,
+                        jsonSchemaIsStrict: true),
+                },
+                ct),
+            logger, ct);
 
         var reason = completion.Value.FinishReason;
         if (reason == ChatFinishReason.ContentFilter)

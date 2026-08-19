@@ -8,22 +8,34 @@ public sealed class GetDocumentDownloadUrlActivity(GraphServiceClient graphClien
 {
     [Function(nameof(GetDocumentDownloadUrl))]
     public async Task<string> GetDocumentDownloadUrl(
-        [ActivityTrigger] QueueMessage message,
+        [ActivityTrigger] GetDocumentDownloadUrlInput input,
         CancellationToken ct = default)
     {
-        var driveItem = await graphClient.Drives[message.DriveId]
-            .Items[message.ItemId]
+        if (input is null)
+        {
+            throw new ArgumentNullException(nameof(input), "GetDocumentDownloadUrl: activity input deserialized as null.");
+        }
+
+        // Use FileUrl directly if it's a pre-authenticated URL (non-SharePoint) — avoids Graph call for URLs already accessible
+        if (input.FileUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+            !input.FileUrl.Contains("sharepoint.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return input.FileUrl;
+        }
+
+        var driveItem = await graphClient.Drives[input.DriveId]
+            .Items[input.ItemId]
             .GetAsync(
                 config => config.QueryParameters.Select = ["id", "@microsoft.graph.downloadUrl"],
                 ct);
 
-        var downloadUrl = driveItem?.AdditionalData
-            .TryGetValue("@microsoft.graph.downloadUrl", out var urlObj) == true
+        var downloadUrl = driveItem?.AdditionalData is { } data &&
+            data.TryGetValue("@microsoft.graph.downloadUrl", out var urlObj)
             ? urlObj as string
             : null;
 
         return downloadUrl
             ?? throw new InvalidOperationException(
-                $"Graph did not return a download URL for item {message.ItemId}.");
+                $"Graph did not return a download URL for item {input.ItemId}.");
     }
 }

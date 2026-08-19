@@ -50,7 +50,8 @@ public sealed record QueueMessage(
 public sealed record BatchRequest(
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("label")] string? Label = null,
-    [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null);
+    [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null,
+    [property: JsonPropertyName("chunkSize")] int? ChunkSize = null);
 
 /// <summary>Resolved SharePoint target returned by the resolve activity.</summary>
 public sealed record ResolvedSharePointTarget(
@@ -80,34 +81,67 @@ public sealed record ExtractionResult(
     [property: JsonPropertyName("pageCount")] int PageCount,
     [property: JsonPropertyName("textLength")] int TextLength,
     [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs,
-    [property: JsonPropertyName("language")] string Language = "unknown");
+    [property: JsonPropertyName("language")] string Language = "unknown",
+    [property: JsonPropertyName("extractionMethod")] string ExtractionMethod = "document-intelligence")
+{
+    private const string UnsupportedMethod = "unsupported";
+
+    // Sentinel for formats that cannot be parsed; routes the document to human review.
+    public static ExtractionResult UnsupportedFormat(string fileName) =>
+        new(Text: $"[Unsupported format: {Path.GetExtension(fileName)}]",
+            PageCount: 0, TextLength: 0, KeyValuePairs: [], Language: "unknown",
+            ExtractionMethod: UnsupportedMethod);
+
+    public bool IsUnsupported => ExtractionMethod == UnsupportedMethod;
+}
 
 // --- Activity Inputs/Outputs ---
 
-public sealed record ExtractContentInput(string DocumentUrl);
+public sealed record ExtractContentInput(string DocumentUrl, string FileName = "");
+
+public sealed record GetDocumentDownloadUrlInput(
+    [property: JsonPropertyName("driveId")] string DriveId,
+    [property: JsonPropertyName("itemId")] string ItemId,
+    [property: JsonPropertyName("fileUrl")] string FileUrl);
 
 public sealed record ClassifyTypeInput(
-    string DocumentId,
-    string FileName,
-    string ExtractedText,
-    IReadOnlyList<DocumentField> KeyValuePairs);
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("extractedText")] string ExtractedText,
+    [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs);
 
 public sealed record ExtractMetadataInput(
-    string DocumentId,
-    string FileName,
-    DocumentType DocumentType,
-    string ExtractedText,
-    IReadOnlyList<DocumentField> KeyValuePairs);
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
+    [property: JsonPropertyName("extractedText")] string ExtractedText,
+    [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs);
 
 public sealed record RouteResultInput(
-    QueueMessage Message,
-    TypeClassificationResult TypeClassification,
-    MetadataExtractionResult? Metadata,
-    ExtractionResult Extraction);
+    [property: JsonPropertyName("message")] QueueMessage Message,
+    [property: JsonPropertyName("typeClassification")] TypeClassificationResult TypeClassification,
+    [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
+    [property: JsonPropertyName("extraction")] ExtractionResult Extraction);
 
 public sealed record FilterProcessedInput(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
     [property: JsonPropertyName("batchId")] string BatchId);
+
+public sealed record ChunkRequest(
+    [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
+    [property: JsonPropertyName("batchId")] string BatchId,
+    [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
+    [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency);
+
+/// <summary>Slim projection passed from ChunkOrchestrator → BatchOrchestrator → GenerateBatchReport; excludes extracted text to avoid OOM at 100K scale.</summary>
+public sealed record BatchDocumentEntry(
+    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
+    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
+    [property: JsonPropertyName("typeConfidence")] double TypeConfidence);
+
+public sealed record ChunkResult(
+    [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
+    [property: JsonPropertyName("errors")] int Errors);
 
 public sealed record WriteMetadataInput(
     [property: JsonPropertyName("siteId")] string SiteId,
@@ -124,7 +158,7 @@ public sealed record GenerateBatchReportInput(
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
-    [property: JsonPropertyName("results")] IReadOnlyList<EnrichmentResult> Results,
+    [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
     [property: JsonPropertyName("errors")] int Errors);
 
 // --- Agent 1: Document Type Classification ---
