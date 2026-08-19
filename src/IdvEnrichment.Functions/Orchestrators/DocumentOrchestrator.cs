@@ -58,8 +58,7 @@ public sealed class DocumentOrchestrator
 
             var typeClassification = await ctx.CallActivityAsync<TypeClassificationResult>(
                 "ClassifyType",
-                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
-                retry);
+                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs));
 
             var typeThreshold = await ctx.CallActivityAsync<double>(
                 "GetTypeConfidenceThreshold", typeClassification.DocumentType, retry);
@@ -77,8 +76,7 @@ public sealed class DocumentOrchestrator
                         message.FileName,
                         typeClassification.DocumentType,
                         extraction.Text,
-                        extraction.KeyValuePairs),
-                    retry);
+                        extraction.KeyValuePairs));
             }
 
             var enrichmentResult = await ctx.CallActivityAsync<EnrichmentResult>(
