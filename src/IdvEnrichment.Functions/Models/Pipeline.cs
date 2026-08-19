@@ -2,36 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace IdvEnrichment.Functions.Models;
 
-[JsonConverter(typeof(JsonStringEnumConverter<ProcessingSource>))]
-public enum ProcessingSource
-{
-    Trigger,
-    Batch,
-}
-
-[JsonConverter(typeof(JsonStringEnumConverter<RoutingDecision>))]
-public enum RoutingDecision
-{
-    Write,
-    Review,
-}
-
-/// <summary>Document types recognized by the taxonomy. Keep in sync with taxonomy.yaml.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<DocumentType>))]
-public enum DocumentType
-{
-    [JsonStringEnumMemberName("Lease Agreement")] LeaseAgreement,
-    [JsonStringEnumMemberName("Offer Memorandum")] OfferMemorandum,
-    [JsonStringEnumMemberName("Market Report")] MarketReport,
-    [JsonStringEnumMemberName("Purchase Agreement")] PurchaseAgreement,
-    [JsonStringEnumMemberName("Letter of Intent")] LetterOfIntent,
-    [JsonStringEnumMemberName("Financial Analysis")] FinancialAnalysis,
-    [JsonStringEnumMemberName("Due Diligence")] DueDiligence,
-    Correspondence,
-    Presentation,
-    Other,
-}
-
 /// <summary>Message placed on the processing queue for each document.</summary>
 public sealed record QueueMessage(
     [property: JsonPropertyName("documentId")] string DocumentId,
@@ -75,7 +45,7 @@ public sealed record DocumentField(
     [property: JsonPropertyName("value")] string Value,
     [property: JsonPropertyName("confidence")] double Confidence);
 
-/// <summary>Output from Azure AI Document Intelligence extraction.</summary>
+/// <summary>Output from content extraction; downstream contract is Markdown regardless of extraction path.</summary>
 public sealed record ExtractionResult(
     [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("pageCount")] int PageCount,
@@ -95,7 +65,28 @@ public sealed record ExtractionResult(
     public bool IsUnsupported => ExtractionMethod == UnsupportedMethod;
 }
 
-// --- Activity Inputs/Outputs ---
+/// <summary>Combined output from the full two-agent pipeline.</summary>
+public sealed record EnrichmentResult(
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("extraction")] ExtractionResult Extraction,
+    [property: JsonPropertyName("typeClassification")] TypeClassificationResult TypeClassification,
+    [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
+    [property: JsonPropertyName("processingMetrics")] ProcessingMetrics ProcessingMetrics,
+    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
+    [property: JsonPropertyName("lowConfidenceCategories")] IReadOnlyList<string> LowConfidenceCategories);
+
+public sealed record ProcessingMetrics(
+    [property: JsonPropertyName("extractionDurationMs")] int ExtractionDurationMs = 0,
+    [property: JsonPropertyName("classificationDurationMs")] int ClassificationDurationMs = 0,
+    [property: JsonPropertyName("metadataExtractionDurationMs")] int MetadataExtractionDurationMs = 0,
+    [property: JsonPropertyName("totalDurationMs")] int TotalDurationMs = 0,
+    [property: JsonPropertyName("classificationInputTokens")] int ClassificationInputTokens = 0,
+    [property: JsonPropertyName("classificationOutputTokens")] int ClassificationOutputTokens = 0,
+    [property: JsonPropertyName("extractionInputTokens")] int ExtractionInputTokens = 0,
+    [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0);
+
+// --- Activity Inputs ---
 
 public sealed record ExtractContentInput(string DocumentUrl, string FileName = "");
 
@@ -133,16 +124,6 @@ public sealed record ChunkRequest(
     [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
     [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency);
 
-/// <summary>Slim projection passed from ChunkOrchestrator → BatchOrchestrator → GenerateBatchReport; excludes extracted text to avoid OOM at 100K scale.</summary>
-public sealed record BatchDocumentEntry(
-    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
-    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
-    [property: JsonPropertyName("typeConfidence")] double TypeConfidence);
-
-public sealed record ChunkResult(
-    [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
-    [property: JsonPropertyName("errors")] int Errors);
-
 public sealed record WriteMetadataInput(
     [property: JsonPropertyName("siteId")] string SiteId,
     [property: JsonPropertyName("driveId")] string DriveId,
@@ -154,121 +135,3 @@ public sealed record RecordProcessingResultInput(
     [property: JsonPropertyName("documentId")] string DocumentId,
     [property: JsonPropertyName("status")] string Status);
 
-public sealed record GenerateBatchReportInput(
-    [property: JsonPropertyName("batchId")] string BatchId,
-    [property: JsonPropertyName("url")] string Url,
-    [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
-    [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
-    [property: JsonPropertyName("errors")] int Errors);
-
-// --- Agent 1: Document Type Classification ---
-
-public sealed record TypeClassificationResult(
-    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
-    [property: JsonPropertyName("confidence")] double Confidence,
-    [property: JsonPropertyName("reasoning")] string Reasoning);
-
-// --- Agent 2: Type-Specific Metadata Extraction ---
-
-/// <summary>Extraction result for a single metadata field.</summary>
-public sealed record CategoryClassification(
-    [property: JsonPropertyName("value")] string Value,
-    [property: JsonPropertyName("confidence")] double Confidence,
-    [property: JsonPropertyName("reasoning")] string Reasoning);
-
-/// <summary>An additional metadata field discovered by Agent 2 outside the defined schema.</summary>
-public sealed record SuggestedField(
-    [property: JsonPropertyName("key")] string Key,
-    [property: JsonPropertyName("value")] string Value,
-    [property: JsonPropertyName("confidence")] double Confidence);
-
-/// <summary>Agent 2 output: common fields + type-specific fields + suggestions.</summary>
-public sealed record MetadataExtractionResult(
-    [property: JsonPropertyName("dealType")] CategoryClassification DealType,
-    [property: JsonPropertyName("submarket")] CategoryClassification Submarket,
-    [property: JsonPropertyName("counterparty")] CategoryClassification Counterparty,
-    [property: JsonPropertyName("confidentiality")] CategoryClassification Confidentiality,
-    [property: JsonPropertyName("typeSpecificFields")] IReadOnlyDictionary<string, CategoryClassification> TypeSpecificFields,
-    [property: JsonPropertyName("suggestedFields")] IReadOnlyList<SuggestedField> SuggestedFields);
-
-// --- Combined Pipeline Result ---
-
-public sealed record ProcessingMetrics(
-    [property: JsonPropertyName("extractionDurationMs")] int ExtractionDurationMs = 0,
-    [property: JsonPropertyName("classificationDurationMs")] int ClassificationDurationMs = 0,
-    [property: JsonPropertyName("metadataExtractionDurationMs")] int MetadataExtractionDurationMs = 0,
-    [property: JsonPropertyName("totalDurationMs")] int TotalDurationMs = 0,
-    [property: JsonPropertyName("classificationInputTokens")] int ClassificationInputTokens = 0,
-    [property: JsonPropertyName("classificationOutputTokens")] int ClassificationOutputTokens = 0,
-    [property: JsonPropertyName("extractionInputTokens")] int ExtractionInputTokens = 0,
-    [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0);
-
-/// <summary>Combined output from the full two-agent pipeline.</summary>
-public sealed record EnrichmentResult(
-    [property: JsonPropertyName("documentId")] string DocumentId,
-    [property: JsonPropertyName("fileName")] string FileName,
-    [property: JsonPropertyName("extraction")] ExtractionResult Extraction,
-    [property: JsonPropertyName("typeClassification")] TypeClassificationResult TypeClassification,
-    [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
-    [property: JsonPropertyName("processingMetrics")] ProcessingMetrics ProcessingMetrics,
-    [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
-    [property: JsonPropertyName("lowConfidenceCategories")] IReadOnlyList<string> LowConfidenceCategories);
-
-// --- Error Tracking ---
-
-public enum ProcessingStep
-{
-    Fetch,
-    Extract,
-    ClassifyType,
-    ExtractMetadata,
-    Route,
-    WriteMetadata,
-}
-
-/// <summary>Stored in Azure Table Storage for failed/errored documents.</summary>
-public sealed record ProcessingError(
-    [property: JsonPropertyName("batchId")] string BatchId,
-    [property: JsonPropertyName("documentId")] string DocumentId,
-    [property: JsonPropertyName("fileName")] string FileName,
-    [property: JsonPropertyName("step")] ProcessingStep Step,
-    [property: JsonPropertyName("errorMessage")] string ErrorMessage,
-    [property: JsonPropertyName("retryCount")] int RetryCount,
-    [property: JsonPropertyName("timestamp")] DateTimeOffset Timestamp,
-    [property: JsonPropertyName("rawResponse")] string? RawResponse = null,
-    [property: JsonPropertyName("resolved")] bool Resolved = false);
-
-// --- Batch Report ---
-
-public sealed record BatchReport(
-    [property: JsonPropertyName("batchId")] string BatchId,
-    [property: JsonPropertyName("url")] string Url,
-    [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
-    [property: JsonPropertyName("completedAt")] DateTimeOffset CompletedAt,
-    [property: JsonPropertyName("summary")] BatchSummary Summary,
-    [property: JsonPropertyName("confidenceDistribution")] ConfidenceDistribution ConfidenceDistribution,
-    [property: JsonPropertyName("errorsByStep")] IReadOnlyDictionary<ProcessingStep, int> ErrorsByStep,
-    [property: JsonPropertyName("documentTypeCounts")] IReadOnlyDictionary<string, int> DocumentTypeCounts,
-    [property: JsonPropertyName("cost")] BatchCost Cost);
-
-public sealed record BatchSummary(
-    [property: JsonPropertyName("totalDocuments")] int TotalDocuments,
-    [property: JsonPropertyName("classified")] int Classified,
-    [property: JsonPropertyName("underReview")] int UnderReview,
-    [property: JsonPropertyName("errors")] int Errors,
-    [property: JsonPropertyName("skipped")] int Skipped);
-
-public sealed record ConfidenceDistribution(
-    [property: JsonPropertyName("high")] int High,
-    [property: JsonPropertyName("medium")] int Medium,
-    [property: JsonPropertyName("low")] int Low);
-
-public sealed record BatchCost(
-    [property: JsonPropertyName("documentIntelligence")] decimal DocumentIntelligence,
-    [property: JsonPropertyName("classificationTokens")] TokenUsage ClassificationTokens,
-    [property: JsonPropertyName("extractionTokens")] TokenUsage ExtractionTokens,
-    [property: JsonPropertyName("estimatedTotalUsd")] decimal EstimatedTotalUsd);
-
-public sealed record TokenUsage(
-    [property: JsonPropertyName("inputTokens")] long InputTokens,
-    [property: JsonPropertyName("outputTokens")] long OutputTokens);
