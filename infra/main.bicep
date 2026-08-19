@@ -54,6 +54,21 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+resource deploymentPackageContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: '${take(storageName, 24)}/default/deploymentpackage'
+  dependsOn: [storageAccount]
+}
+
+resource configContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: '${take(storageName, 24)}/default/config'
+  dependsOn: [storageAccount]
+}
+
+resource reportsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: '${take(storageName, 24)}/default/batch-reports'
+  dependsOn: [storageAccount]
+}
+
 // --- Application Insights ---
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
