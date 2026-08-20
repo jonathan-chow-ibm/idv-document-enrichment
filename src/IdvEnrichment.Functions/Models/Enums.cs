@@ -20,15 +20,30 @@ public enum RoutingDecision
 [JsonConverter(typeof(JsonStringEnumConverter<DocumentType>))]
 public enum DocumentType
 {
-    [JsonStringEnumMemberName("Lease Agreement")] LeaseAgreement,
+    // Transaction & Legal
+    [JsonStringEnumMemberName("Listing Agreement")] ListingAgreement,
+    [JsonStringEnumMemberName("Letter of Intent")] LetterOfIntent,
+    [JsonStringEnumMemberName("Purchase & Sale Agreement")] PurchaseAndSaleAgreement,
+    [JsonStringEnumMemberName("Lease / Development / JV Agreement")] LeaseDevelopmentJVAgreement,
+    [JsonStringEnumMemberName("Closing Document")] ClosingDocument,
+    [JsonStringEnumMemberName("Title & Survey")] TitleAndSurvey,
+    // Due Diligence & Entitlements
+    [JsonStringEnumMemberName("Environmental Report")] EnvironmentalReport,
+    [JsonStringEnumMemberName("Plat / Site Plan")] PlatSitePlan,
+    [JsonStringEnumMemberName("Permit / Municipal Approval")] PermitMunicipalApproval,
+    [JsonStringEnumMemberName("Utility & Easement Agreement")] UtilityEasementAgreement,
+    // Financial
+    [JsonStringEnumMemberName("Financial Model / Pro Forma")] FinancialModelProForma,
+    [JsonStringEnumMemberName("Operating Budget")] OperatingBudget,
+    [JsonStringEnumMemberName("Lender / Financing Document")] LenderFinancingDocument,
+    // Marketing & Corporate
+    [JsonStringEnumMemberName("Marketing Flyer / Brochure")] MarketingFlyerBrochure,
+    [JsonStringEnumMemberName("Proposal / Pitch Deck")] ProposalPitchDeck,
+    [JsonStringEnumMemberName("Entity / Corporate Governance")] EntityCorporateGovernance,
+    Correspondence,
+    // Retained from v2
     [JsonStringEnumMemberName("Offer Memorandum")] OfferMemorandum,
     [JsonStringEnumMemberName("Market Report")] MarketReport,
-    [JsonStringEnumMemberName("Purchase Agreement")] PurchaseAgreement,
-    [JsonStringEnumMemberName("Letter of Intent")] LetterOfIntent,
-    [JsonStringEnumMemberName("Financial Analysis")] FinancialAnalysis,
-    [JsonStringEnumMemberName("Due Diligence")] DueDiligence,
-    Correspondence,
-    Presentation,
     Other,
 }
 

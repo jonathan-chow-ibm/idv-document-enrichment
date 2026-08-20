@@ -1,28 +1,329 @@
-version: "2.0"
-last_updated: "2026-08-13"
-approved_by: "Client SME Team"
+version: "3.0"
+last_updated: "2026-08-20"
+approved_by: "Pending SME review"
+
+# Types derived from analysis of TX DFW Risinger sample project.
+# Offer Memorandum and Market Report not present in sample — retained from v2.
+# Additional types expected as other projects are analysed.
 
 document_types:
-  - label: "Lease Agreement"
-    description: "Executed or draft lease contract"
+
+  # --- Transaction & Legal ---
+
+  - label: "Listing Agreement"
+    description: "Broker listing agreement for lease or sale of property"
     specific_fields:
-      - name: tenant
-        description: "The tenant / lessee named in the lease"
-      - name: landlord
-        description: "The landlord / lessor named in the lease"
-      - name: leaseTerm
-        description: "Duration of the lease (e.g., '5 years', '60 months')"
-      - name: rentalRate
-        description: "Base rental rate (e.g., '$24.50/SF NNN')"
-      - name: squareFootage
-        description: "Leased square footage"
+      - name: listingType
+        description: "Lease, Sale, or Both"
+      - name: listingBroker
+        description: "Brokerage firm name"
+      - name: ownerClient
+        description: "Property owner or client entity"
+      - name: commissionRate
+        description: "Commission rate or amount"
+      - name: listingStart
+        description: "Listing start date"
+      - name: listingExpiration
+        description: "Listing expiration date"
+      - name: exclusivityType
+        description: "Exclusive or open listing"
+
+  - label: "Letter of Intent"
+    description: "LOI for lease or purchase"
+    specific_fields:
+      - name: loiType
+        description: "Lease or Purchase"
+      - name: proposingParty
+        description: "Party proposing the LOI"
+      - name: receivingParty
+        description: "Party receiving the LOI"
+      - name: proposedPriceOrRate
+        description: "Proposed purchase price or lease rate"
+      - name: keyTermsSummary
+        description: "Summary of key proposed terms"
+      - name: responseDeadline
+        description: "Deadline for response or acceptance"
+
+  - label: "Purchase & Sale Agreement"
+    description: "Executed or draft purchase/sale contract"
+    specific_fields:
+      - name: buyer
+        description: "Buyer / purchaser entity"
+      - name: seller
+        description: "Seller entity"
+      - name: purchasePrice
+        description: "Agreed purchase price"
+      - name: earnestMoney
+        description: "Earnest money deposit amount"
+      - name: closingDate
+        description: "Scheduled closing date"
+      - name: dueDiligenceDeadline
+        description: "Due diligence period expiration"
+      - name: titleCompany
+        description: "Title company handling the transaction"
+      - name: executionStatus
+        description: "Draft or Executed"
+
+  - label: "Lease / Development / JV Agreement"
+    description: "Executed or draft lease, development, or joint venture agreement"
+    specific_fields:
+      - name: agreementType
+        description: "Lease, Development, or JV"
+      - name: tenantOrDeveloper
+        description: "Tenant or developer entity"
+      - name: landlordOrOwner
+        description: "Landlord or property owner entity"
+      - name: jvPartners
+        description: "Joint venture partner entities (if JV)"
+      - name: term
+        description: "Agreement term or duration"
+      - name: rentalRateOrDevFee
+        description: "Rental rate, development fee, or promote structure"
       - name: commencementDate
-        description: "Lease commencement date"
+        description: "Agreement commencement date"
       - name: expirationDate
-        description: "Lease expiration date"
+        description: "Agreement expiration date"
+      - name: squareFootage
+        description: "Leased or developed square footage"
+
+  - label: "Closing Document"
+    description: "Closing statements, deeds, and recorded transaction documents"
+    specific_fields:
+      - name: closingDate
+        description: "Date of closing"
+      - name: grantorSeller
+        description: "Grantor or seller entity"
+      - name: granteeBuyer
+        description: "Grantee or buyer entity"
+      - name: salePriceConsideration
+        description: "Sale price or consideration amount"
+      - name: titleCompanyEscrow
+        description: "Title company and GF/escrow number"
+      - name: recordingInfo
+        description: "Recording instrument number, volume, and page"
+      - name: legalDescription
+        description: "Legal description of the property"
+
+  - label: "Title & Survey"
+    description: "Title commitments, title policies, and surveys"
+    specific_fields:
+      - name: titleCompany
+        description: "Title company issuing the commitment or policy"
+      - name: commitmentGFNumber
+        description: "Commitment or GF number"
+      - name: effectiveDate
+        description: "Effective date of the title commitment"
+      - name: acreage
+        description: "Property acreage"
+      - name: easements
+        description: "Easements identified on the property"
+      - name: scheduleBExceptions
+        description: "Schedule B exceptions to title"
+      - name: surveyor
+        description: "Surveying firm or individual"
+      - name: surveyDate
+        description: "Date of the survey"
+
+  # --- Due Diligence & Entitlements ---
+
+  - label: "Environmental Report"
+    description: "Phase I/II ESA, geotechnical, SWPPP, NOI, and other environmental reports"
+    specific_fields:
+      - name: reportType
+        description: "Phase I ESA, Phase II ESA, Geotech, SWPPP, NOI, or other"
+      - name: consultant
+        description: "Consulting firm that prepared the report"
+      - name: reportDate
+        description: "Date of the report"
+      - name: acreage
+        description: "Property acreage covered"
+      - name: findingsRECs
+        description: "Key findings and recognized environmental conditions"
+      - name: recommendations
+        description: "Recommended actions or follow-up"
+      - name: regulatoryPermitNumber
+        description: "Regulatory permit number (e.g., TPDES permit TXR...)"
+
+  - label: "Plat / Site Plan"
+    description: "Recorded plats, site plans, and zoning documents"
+    specific_fields:
+      - name: subtype
+        description: "Plat, Site Plan, or Zoning"
+      - name: jurisdiction
+        description: "City or county jurisdiction"
+      - name: caseNumber
+        description: "Municipal case or application number (e.g., PDC-25-0212)"
+      - name: acreage
+        description: "Total acreage"
+      - name: lotsBlocks
+        description: "Number of lots and blocks"
+      - name: zoning
+        description: "Zoning classification"
+      - name: engineerSurveyor
+        description: "Engineer or surveyor of record"
+      - name: revisionDate
+        description: "Most recent revision date"
+
+  - label: "Permit / Municipal Approval"
+    description: "Building permits, stormwater permits, utility permits, and municipal approvals"
+    specific_fields:
+      - name: permitType
+        description: "Plat, Building, Stormwater, Utility, or Bond"
+      - name: agency
+        description: "Issuing agency (city, county, or state)"
+      - name: permitCaseNumber
+        description: "Permit or case number"
+      - name: status
+        description: "Approved, Pending, Deficiency, or Conditional"
+      - name: issueDate
+        description: "Permit issue date"
+      - name: conditions
+        description: "Conditions of approval"
+
+  - label: "Utility & Easement Agreement"
+    description: "Utility service agreements, easements, encroachments, and CFA/availability agreements"
+    specific_fields:
+      - name: utilityType
+        description: "Water, Sewer, Power, Gas, or Stormwater"
+      - name: provider
+        description: "Utility provider (e.g., Oncor, City of Fort Worth, BKV)"
+      - name: agreementType
+        description: "Easement, Encroachment, CFA, or Availability"
+      - name: parties
+        description: "Named parties to the agreement"
+      - name: recordingInfo
+        description: "Recording instrument number"
+      - name: effectiveDate
+        description: "Agreement effective date"
+
+  # --- Financial ---
+
+  - label: "Financial Model / Pro Forma"
+    description: "Pro forma, sensitivity analysis, return models, and cash flow projections"
+    specific_fields:
+      - name: modelType
+        description: "ProForma, Sensitivity, or Return model"
+      - name: scenario
+        description: "Scenario name or lender (e.g., Sealy, Hancock Whitney)"
+      - name: irr
+        description: "Internal rate of return"
+      - name: equityMultiple
+        description: "Equity multiple"
+      - name: yieldOnCost
+        description: "Yield on cost"
+      - name: totalDevCost
+        description: "Total development cost"
+      - name: stabilizedNOI
+        description: "Stabilized net operating income"
+      - name: holdPeriod
+        description: "Projected hold period"
+      - name: modelVersionDate
+        description: "Model version or date"
+
+  - label: "Operating Budget"
+    description: "Annual operating budgets and revenue/expense projections"
+    specific_fields:
+      - name: budgetYear
+        description: "Fiscal year covered by the budget"
+      - name: totalRevenue
+        description: "Total projected revenue"
+      - name: totalOpEx
+        description: "Total operating expenses"
+      - name: noi
+        description: "Net operating income"
+      - name: preparer
+        description: "Person or firm that prepared the budget"
+      - name: exhibitRef
+        description: "Exhibit reference (e.g., JVA Exhibit C)"
+
+  - label: "Lender / Financing Document"
+    description: "Loan term sheets, proposals, commitments, and financing agreements"
+    specific_fields:
+      - name: lender
+        description: "Lending institution"
+      - name: loanType
+        description: "Construction, Permanent, or Bridge"
+      - name: loanAmount
+        description: "Loan amount"
+      - name: rateSpread
+        description: "Interest rate or spread over index"
+      - name: ltvLtc
+        description: "LTV or LTC ratio"
+      - name: termAmortization
+        description: "Loan term and amortization period"
+      - name: recourse
+        description: "Recourse or non-recourse"
+      - name: maturityDate
+        description: "Loan maturity date"
+      - name: status
+        description: "Term Sheet, Proposal, or Executed"
+
+  # --- Marketing & Corporate ---
+
+  - label: "Marketing Flyer / Brochure"
+    description: "Property marketing flyers, brochures, and availability sheets"
+    specific_fields:
+      - name: propertyType
+        description: "Property type (Industrial, Office, Retail, etc.)"
+      - name: sizeSFAcreage
+        description: "Building size in SF or land acreage"
+      - name: askingRatePrice
+        description: "Asking rate per SF or sale price"
+      - name: availabilityDeliveryDate
+        description: "Available date or delivery date"
+      - name: listingBrokers
+        description: "Listing brokers and contact information"
+      - name: highlights
+        description: "Key property highlights or features"
+
+  - label: "Proposal / Pitch Deck"
+    description: "Investment committee presentations, client pitches, and JV proposals"
+    specific_fields:
+      - name: proposalType
+        description: "IC presentation, Client Pitch, or JV proposal"
+      - name: audience
+        description: "Intended audience"
+      - name: project
+        description: "Project or property name"
+      - name: keyMetricsSummary
+        description: "Summary of key financial or deal metrics"
+      - name: date
+        description: "Presentation date"
+
+  - label: "Entity / Corporate Governance"
+    description: "Certificates of formation, operating agreements, consents, and resolutions"
+    specific_fields:
+      - name: subtype
+        description: "Certificate of Formation, Operating Agreement, Written Consent, or Resolution"
+      - name: entityName
+        description: "Legal entity name (e.g., IDV Risinger LLC)"
+      - name: entityType
+        description: "LLC, LP, or other entity type"
+      - name: state
+        description: "State of formation"
+      - name: filingDate
+        description: "Filing or execution date"
+      - name: fileNumber
+        description: "Secretary of state file number"
+      - name: signatoriesManagers
+        description: "Signatories or managers named in the document"
+
+  - label: "Correspondence"
+    description: "Emails, letters, and memos"
+    specific_fields:
+      - name: sender
+        description: "Person or entity who sent the correspondence"
+      - name: recipient
+        description: "Person or entity receiving the correspondence"
+      - name: subject
+        description: "Subject line or topic"
+      - name: date
+        description: "Date of the correspondence"
+
+  # --- Retained from v2 (not in development sample) ---
 
   - label: "Offer Memorandum"
-    description: "Property marketing package with financials and property details"
+    description: "Property marketing package with financials and investment summary"
     specific_fields:
       - name: propertyName
         description: "Name of the property being marketed"
@@ -41,7 +342,7 @@ document_types:
     description: "Broker market research, quarterly reports, or market surveys"
     specific_fields:
       - name: reportPeriod
-        description: "Time period covered (e.g., 'Q2 2024')"
+        description: "Time period covered (e.g., Q2 2024)"
       - name: marketArea
         description: "Geographic market area covered"
       - name: vacancyRate
@@ -51,76 +352,8 @@ document_types:
       - name: avgRentalRate
         description: "Average rental rate reported"
 
-  - label: "Purchase Agreement"
-    description: "Executed or draft purchase/sale contract"
-    specific_fields:
-      - name: buyer
-        description: "Buyer / purchaser entity"
-      - name: seller
-        description: "Seller entity"
-      - name: purchasePrice
-        description: "Agreed purchase price"
-      - name: closingDate
-        description: "Scheduled closing date"
-      - name: earnestMoney
-        description: "Earnest money deposit amount"
-
-  - label: "Letter of Intent"
-    description: "LOI for lease or purchase"
-    specific_fields:
-      - name: proposedTermsSummary
-        description: "Summary of key proposed terms"
-      - name: responseDeadline
-        description: "Deadline for response or acceptance"
-      - name: parties
-        description: "Named parties to the LOI"
-
-  - label: "Financial Analysis"
-    description: "Pro forma, IRR analysis, cash flow projections"
-    specific_fields:
-      - name: propertyName
-        description: "Property being analyzed"
-      - name: irr
-        description: "Internal rate of return"
-      - name: cashOnCash
-        description: "Cash-on-cash return"
-      - name: holdPeriod
-        description: "Projected hold period"
-
-  - label: "Due Diligence"
-    description: "Environmental reports, surveys, title documents, inspections"
-    specific_fields:
-      - name: propertyAddress
-        description: "Address of the subject property"
-      - name: reportType
-        description: "Type of due diligence report (e.g., Phase I ESA, Survey)"
-      - name: findingsSummary
-        description: "Summary of key findings"
-
-  - label: "Correspondence"
-    description: "Emails, letters, memos"
-    specific_fields:
-      - name: sender
-        description: "Person or entity who sent the correspondence"
-      - name: recipient
-        description: "Person or entity receiving the correspondence"
-      - name: subject
-        description: "Subject line or topic"
-      - name: date
-        description: "Date of the correspondence"
-
-  - label: "Presentation"
-    description: "Pitch decks, investment committee presentations"
-    specific_fields:
-      - name: audience
-        description: "Intended audience (e.g., 'Investment Committee')"
-      - name: topic
-        description: "Presentation topic or title"
-      - name: date
-        description: "Presentation date"
-
   - label: "Other"
-    description: "Does not fit above categories"
+    description: "Does not fit any above category"
     specific_fields: []
 
 common_categories:
@@ -151,29 +384,12 @@ common_categories:
   - name: "Submarket"
     field_name: "submarket"
     sharepoint_column: "Submarket"
-    description: "The Houston-area submarket where the property is located"
-    allowed_values:
-      - label: "Northwest Houston"
-        description: "Highway 290 corridor, Willowbrook, Champions, Cypress"
-      - label: "North Houston"
-        description: "I-45 North corridor, Greenspoint, IAH Airport area"
-      - label: "Northeast Houston"
-        description: "I-10 East, Channelview, Baytown"
-      - label: "Katy/West Houston"
-        description: "I-10 West corridor, Energy Corridor, Katy"
-      - label: "Southwest Houston"
-        description: "Highway 59 South, Sugar Land, Missouri City"
-      - label: "Southeast Houston"
-        description: "I-45 South, La Marque, Texas City, Galveston"
-      - label: "Central Houston"
-        description: "Inner Loop, Midtown, East End"
-      - label: "Multiple"
-        description: "Document covers multiple submarkets"
-      - label: "Unknown"
-        description: "Submarket cannot be determined from document content"
+    description: "The geographic submarket or area where the property is located"
+    is_freetext: true
     decision_rules:
-      - "Use street addresses, highway references, and neighborhood names to determine submarket"
-      - "If a document covers a portfolio across submarkets, use 'Multiple'"
+      - "Extract the city, neighborhood, or submarket name from the document"
+      - "Use street addresses and area references to determine location"
+      - "If location cannot be determined, use 'Unknown'"
 
   - name: "Counterparty"
     field_name: "counterparty"
