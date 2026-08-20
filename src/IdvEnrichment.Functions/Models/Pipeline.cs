@@ -37,7 +37,12 @@ public sealed record LibraryDocument(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("downloadUrl")] string DownloadUrl,
     [property: JsonPropertyName("mimeType")] string MimeType,
-    [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset LastModifiedDateTime);
+    [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset LastModifiedDateTime,
+    [property: JsonPropertyName("folderPath")] string? FolderPath = null)
+{
+    // Relative path shown to the AI agents: includes folder context for better classification
+    public string RelativePath => FolderPath is null ? Name : $"{FolderPath}/{Name}";
+}
 
 /// <summary>A key-value pair extracted from a document by Document Intelligence.</summary>
 public sealed record DocumentField(
@@ -74,7 +79,8 @@ public sealed record EnrichmentResult(
     [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
     [property: JsonPropertyName("processingMetrics")] ProcessingMetrics ProcessingMetrics,
     [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
-    [property: JsonPropertyName("lowConfidenceCategories")] IReadOnlyList<string> LowConfidenceCategories);
+    [property: JsonPropertyName("lowConfidenceCategories")] IReadOnlyList<string> LowConfidenceCategories,
+    [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded = true);
 
 public sealed record ProcessingMetrics(
     [property: JsonPropertyName("extractionDurationMs")] int ExtractionDurationMs = 0,

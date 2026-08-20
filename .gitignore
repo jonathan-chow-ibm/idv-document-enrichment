@@ -53,3 +53,5 @@ venv/
 .pytest_cache/
 .ipynb_checkpoints/
 
+# Sample files
+TX DFW Risinger/*

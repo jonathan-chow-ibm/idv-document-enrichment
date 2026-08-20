@@ -84,16 +84,33 @@ public sealed class DocumentOrchestrator
                 new RouteResultInput(message, typeClassification, metadata, extraction),
                 retry);
 
-            await ctx.CallActivityAsync(
-                "WriteMetadata",
-                new WriteMetadataInput(message.SiteId, message.DriveId, message.ItemId, enrichmentResult),
-                retry);
+            try
+            {
+                await ctx.CallActivityAsync(
+                    "WriteMetadata",
+                    new WriteMetadataInput(message.SiteId, message.DriveId, message.ItemId, enrichmentResult),
+                    retry);
+            }
+            catch (TaskFailedException ex)
+            {
+                log.LogError(ex, "WriteMetadata failed for {DocumentId} — metadata not written to SharePoint", message.DocumentId);
+                enrichmentResult = enrichmentResult with { WriteBackSucceeded = false };
+            }
 
-            var status = enrichmentResult.RoutingDecision == RoutingDecision.Write ? "success" : "review";
-            await ctx.CallActivityAsync(
-                "RecordProcessingResult",
-                new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, status),
-                retry);
+            var status = enrichmentResult.RoutingDecision == RoutingDecision.Write && enrichmentResult.WriteBackSucceeded
+                ? "success"
+                : enrichmentResult.WriteBackSucceeded ? "review" : "write-back-failed";
+            try
+            {
+                await ctx.CallActivityAsync(
+                    "RecordProcessingResult",
+                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, status),
+                    retry);
+            }
+            catch (TaskFailedException ex)
+            {
+                log.LogError(ex, "RecordProcessingResult failed for {DocumentId}", message.DocumentId);
+            }
 
             log.LogInformation("Orchestration complete for document {DocumentId}: {Status}",
                 message.DocumentId, status);

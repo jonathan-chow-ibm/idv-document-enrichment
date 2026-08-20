@@ -6,7 +6,8 @@ namespace IdvEnrichment.Functions.Models;
 public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("documentType")] DocumentType DocumentType,
     [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
-    [property: JsonPropertyName("typeConfidence")] double TypeConfidence);
+    [property: JsonPropertyName("typeConfidence")] double TypeConfidence,
+    [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded);
 
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
@@ -34,6 +35,7 @@ public sealed record BatchSummary(
     [property: JsonPropertyName("totalDocuments")] int TotalDocuments,
     [property: JsonPropertyName("classified")] int Classified,
     [property: JsonPropertyName("underReview")] int UnderReview,
+    [property: JsonPropertyName("writeBackFailed")] int WriteBackFailed,
     [property: JsonPropertyName("errors")] int Errors,
     [property: JsonPropertyName("skipped")] int Skipped);
 

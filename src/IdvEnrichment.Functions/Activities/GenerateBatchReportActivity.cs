@@ -20,8 +20,9 @@ public sealed class GenerateBatchReportActivity(
         [ActivityTrigger] GenerateBatchReportInput input,
         CancellationToken ct = default)
     {
-        var classified = input.Results.Count(r => r.RoutingDecision == RoutingDecision.Write);
-        var underReview = input.Results.Count(r => r.RoutingDecision == RoutingDecision.Review);
+        var classified = input.Results.Count(r => r.RoutingDecision == RoutingDecision.Write && r.WriteBackSucceeded);
+        var underReview = input.Results.Count(r => r.RoutingDecision == RoutingDecision.Review && r.WriteBackSucceeded);
+        var writeBackFailed = input.Results.Count(r => !r.WriteBackSucceeded);
 
         var high = input.Results.Count(r => r.TypeConfidence >= HighThreshold);
         var medium = input.Results.Count(r => r.TypeConfidence >= MediumThreshold && r.TypeConfidence < HighThreshold);
@@ -40,6 +41,7 @@ public sealed class GenerateBatchReportActivity(
                 TotalDocuments: input.Results.Count + input.Errors,
                 Classified: classified,
                 UnderReview: underReview,
+                WriteBackFailed: writeBackFailed,
                 Errors: input.Errors,
                 Skipped: 0),
             ConfidenceDistribution: new ConfidenceDistribution(High: high, Medium: medium, Low: low),
@@ -119,6 +121,7 @@ public sealed class GenerateBatchReportActivity(
         sb.AppendLine($"<div class=\"card\"><div class=\"num\">{r.Summary.TotalDocuments:N0}</div><div class=\"lbl\">Total Documents</div></div>");
         sb.AppendLine($"<div class=\"card\"><div class=\"num\" style=\"color:#107c10\">{r.Summary.Classified:N0}</div><div class=\"lbl\">Auto-Classified</div></div>");
         sb.AppendLine($"<div class=\"card\"><div class=\"num\" style=\"color:#ffaa44\">{r.Summary.UnderReview:N0}</div><div class=\"lbl\">Under Review ({reviewRate:F1}%)</div></div>");
+        sb.AppendLine($"<div class=\"card\"><div class=\"num\" style=\"color:#d13438\">{r.Summary.WriteBackFailed:N0}</div><div class=\"lbl\">Write-Back Failed</div></div>");
         sb.AppendLine($"<div class=\"card\"><div class=\"num\" style=\"color:#d13438\">{r.Summary.Errors:N0}</div><div class=\"lbl\">Errors ({errorRate:F1}%)</div></div>");
         sb.AppendLine("</div>");
 

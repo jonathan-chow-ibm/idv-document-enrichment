@@ -14,7 +14,7 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
 
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".pdf", ".docx", ".doc", ".xlsx", ".pptx", ".txt"
+        ".pdf", ".docx", ".doc", ".xlsx", ".xlsm", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".msg"
     };
 
     [Function(nameof(EnumerateLibrary))]
@@ -71,7 +71,8 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
                         Name: item.Name!,
                         DownloadUrl: downloadUrl,
                         MimeType: item.File?.MimeType ?? "application/octet-stream",
-                        LastModifiedDateTime: item.LastModifiedDateTime ?? DateTimeOffset.MinValue));
+                        LastModifiedDateTime: item.LastModifiedDateTime ?? DateTimeOffset.MinValue,
+                        FolderPath: folderPath));
                 }
 
                 return true;

@@ -54,7 +54,7 @@ public sealed class ChunkOrchestrator
                     SiteId: input.Target.SiteId,
                     DriveId: input.Target.DriveId,
                     ItemId: doc.Id,
-                    FileName: doc.Name,
+                    FileName: doc.RelativePath,
                     FileUrl: doc.DownloadUrl,
                     ContentType: doc.MimeType,
                     ModifiedDateTime: doc.LastModifiedDateTime,
@@ -65,7 +65,8 @@ public sealed class ChunkOrchestrator
             return (new BatchDocumentEntry(
                 result.TypeClassification.DocumentType,
                 result.RoutingDecision,
-                result.TypeClassification.Confidence), true);
+                result.TypeClassification.Confidence,
+                result.WriteBackSucceeded), true);
         }
         catch (OperationCanceledException)
         {
