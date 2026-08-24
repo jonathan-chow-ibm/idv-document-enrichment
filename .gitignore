@@ -67,6 +67,13 @@ TX HOU Flowserve/
 /*.pptx
 /*.msg
 
+# Publish output directories
+publish/
+publish-linux/
+
+# Spike / throwaway trigger files
+src/IdvEnrichment.Functions/Triggers/SpikeDrawingRenderTrigger.cs
+
 # Pipeline / analysis outputs (contain extracted client data)
 char-analysis.csv
 result-*.json
