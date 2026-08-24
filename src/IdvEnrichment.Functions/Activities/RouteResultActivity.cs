@@ -27,6 +27,7 @@ public sealed class RouteResultActivity(
             TypeClassification: input.TypeClassification,
             Metadata: input.Metadata,
             ProcessingMetrics: new ProcessingMetrics(
+                ExtractionDurationMs: input.Extraction.DurationMs,
                 ClassificationDurationMs: input.TypeClassification.DurationMs,
                 MetadataExtractionDurationMs: input.Metadata?.DurationMs ?? 0,
                 ClassificationInputTokens: input.TypeClassification.InputTokens,

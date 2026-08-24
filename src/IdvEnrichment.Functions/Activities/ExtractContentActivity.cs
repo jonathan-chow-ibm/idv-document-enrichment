@@ -4,6 +4,7 @@ using IdvEnrichment.Functions.Models;
 using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 using PipelineDocumentField = IdvEnrichment.Functions.Models.DocumentField;
 
 namespace IdvEnrichment.Functions.Activities;
@@ -34,6 +35,7 @@ public sealed class ExtractContentActivity(
 
     private async Task<ExtractionResult> ExtractSpreadsheetAsync(ExtractContentInput input, CancellationToken ct)
     {
+        var sw = Stopwatch.StartNew();
         var client = httpClientFactory.CreateClient("spreadsheet");
         using var response = await client.GetAsync(input.DocumentUrl, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
@@ -52,13 +54,15 @@ public sealed class ExtractContentActivity(
             return ExtractionResult.UnsupportedFormat(input.FileName);
         }
 
+        sw.Stop();
         return new ExtractionResult(
             Text: markdown,
             PageCount: 1,
             TextLength: markdown.Length,
             KeyValuePairs: [],
             Language: "unknown",
-            ExtractionMethod: "closedxml");
+            ExtractionMethod: "closedxml",
+            DurationMs: (int)sw.Elapsed.TotalMilliseconds);
     }
 
     private async Task<ExtractionResult> ExtractWithDocumentIntelligenceAsync(ExtractContentInput input, CancellationToken ct)
@@ -68,8 +72,10 @@ public sealed class ExtractContentActivity(
             OutputContentFormat = DocumentContentFormat.Markdown,
         };
 
+        var sw = Stopwatch.StartNew();
         var operation = await docIntelClient.AnalyzeDocumentAsync(
             WaitUntil.Completed, options, ct);
+        sw.Stop();
 
         var result = operation.Value;
         var text = result.Content;
@@ -84,7 +90,8 @@ public sealed class ExtractContentActivity(
             TextLength: text.Length,
             KeyValuePairs: kvPairs,
             Language: language,
-            ExtractionMethod: "document-intelligence");
+            ExtractionMethod: "document-intelligence",
+            DurationMs: (int)sw.Elapsed.TotalMilliseconds);
     }
 
     private static IReadOnlyList<PipelineDocumentField> ExtractKeyValuePairs(AnalyzeResult result)

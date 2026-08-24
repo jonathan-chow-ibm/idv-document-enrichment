@@ -57,7 +57,8 @@ public sealed record ExtractionResult(
     [property: JsonPropertyName("textLength")] int TextLength,
     [property: JsonPropertyName("keyValuePairs")] IReadOnlyList<DocumentField> KeyValuePairs,
     [property: JsonPropertyName("language")] string Language = "unknown",
-    [property: JsonPropertyName("extractionMethod")] string ExtractionMethod = "document-intelligence")
+    [property: JsonPropertyName("extractionMethod")] string ExtractionMethod = "document-intelligence",
+    [property: JsonPropertyName("durationMs")] int DurationMs = 0)
 {
     private const string UnsupportedMethod = "unsupported";
 
