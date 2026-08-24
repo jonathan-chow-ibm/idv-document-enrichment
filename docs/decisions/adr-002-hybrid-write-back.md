@@ -7,10 +7,10 @@ Superseded
 ## Superseded By
 
 Batch mode only is in scope for this engagement. `WriteMetadataActivity` (Graph API via
-`Microsoft.Graph`) handles batch write-back directly from Azure Functions — the Power Automate
-batch path was never needed. Trigger mode (single-document, event-driven) is deferred; no
-write-back path for trigger mode has been implemented. The hybrid complexity is eliminated for
-the current scope.
+`Microsoft.Graph`) handles batch write-back directly from Azure Functions. Trigger mode
+(single-document, event-driven) and its Power Automate write-back path are deferred — both
+remain the intended design for trigger mode but have not been implemented yet. The full hybrid
+strategy from this ADR will apply once trigger mode is built.
 
 ## Date
 
