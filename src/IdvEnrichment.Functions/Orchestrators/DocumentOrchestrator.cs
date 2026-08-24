@@ -58,7 +58,8 @@ public sealed class DocumentOrchestrator
 
             var typeClassification = await ctx.CallActivityAsync<TypeClassificationResult>(
                 "ClassifyType",
-                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs));
+                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
+                retry);
 
             var typeThreshold = await ctx.CallActivityAsync<double>(
                 "GetTypeConfidenceThreshold", typeClassification.DocumentType, retry);
