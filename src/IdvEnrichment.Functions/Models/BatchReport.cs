@@ -27,7 +27,6 @@ public sealed record BatchReport(
     [property: JsonPropertyName("completedAt")] DateTimeOffset CompletedAt,
     [property: JsonPropertyName("summary")] BatchSummary Summary,
     [property: JsonPropertyName("confidenceDistribution")] ConfidenceDistribution ConfidenceDistribution,
-    [property: JsonPropertyName("errorsByStep")] IReadOnlyDictionary<ProcessingStep, int> ErrorsByStep,
     [property: JsonPropertyName("documentTypeCounts")] IReadOnlyDictionary<string, int> DocumentTypeCounts,
     [property: JsonPropertyName("cost")] BatchCost Cost);
 

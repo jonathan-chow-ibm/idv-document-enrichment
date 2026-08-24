@@ -16,43 +16,38 @@ public enum RoutingDecision
     Review,
 }
 
-/// <summary>Document types recognized by the taxonomy. Keep in sync with taxonomy.yaml.</summary>
+/// <summary>Document types recognized by the taxonomy (v4, from client Metadata Request). Keep in sync with taxonomy.yaml.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<DocumentType>))]
 public enum DocumentType
 {
-    // Transaction & Legal
-    [JsonStringEnumMemberName("Listing Agreement")] ListingAgreement,
+    // Contracts
+    [JsonStringEnumMemberName("PSA - Acquisition")] PsaAcquisition,
+    [JsonStringEnumMemberName("PSA - Disposition")] PsaDisposition,
+    [JsonStringEnumMemberName("Lease")] Lease,
+    [JsonStringEnumMemberName("Lease Amendment")] LeaseAmendment,
+    [JsonStringEnumMemberName("Vendor Contract")] VendorContract,
+    [JsonStringEnumMemberName("Commission Agreement")] CommissionAgreement,
+    [JsonStringEnumMemberName("Loan Agreement")] LoanAgreement,
+    [JsonStringEnumMemberName("JV Agreement")] JvAgreement,
+    [JsonStringEnumMemberName("Development Agreement")] DevelopmentAgreement,
     [JsonStringEnumMemberName("Letter of Intent")] LetterOfIntent,
-    [JsonStringEnumMemberName("Purchase & Sale Agreement")] PurchaseAndSaleAgreement,
-    [JsonStringEnumMemberName("Lease / Development / JV Agreement")] LeaseDevelopmentJVAgreement,
-    [JsonStringEnumMemberName("Closing Document")] ClosingDocument,
-    [JsonStringEnumMemberName("Title & Survey")] TitleAndSurvey,
-    // Due Diligence & Entitlements
-    [JsonStringEnumMemberName("Environmental Report")] EnvironmentalReport,
-    [JsonStringEnumMemberName("Plat / Site Plan")] PlatSitePlan,
-    [JsonStringEnumMemberName("Permit / Municipal Approval")] PermitMunicipalApproval,
-    [JsonStringEnumMemberName("Utility & Easement Agreement")] UtilityEasementAgreement,
-    // Financial
-    [JsonStringEnumMemberName("Financial Model / Pro Forma")] FinancialModelProForma,
+    [JsonStringEnumMemberName("Term Sheet")] TermSheet,
+    // Drawing Files
+    [JsonStringEnumMemberName("Survey")] Survey,
+    [JsonStringEnumMemberName("Plat")] Plat,
+    [JsonStringEnumMemberName("Design Drawing")] DesignDrawing,
+    // Reports
+    [JsonStringEnumMemberName("Closing Statement")] ClosingStatement,
+    [JsonStringEnumMemberName("Environmental Survey")] EnvironmentalSurvey,
+    [JsonStringEnumMemberName("Geotechnical Report")] GeotechnicalReport,
+    [JsonStringEnumMemberName("Easement Document")] EasementDocument,
+    // Budget Files
+    [JsonStringEnumMemberName("Proforma")] Proforma,
+    [JsonStringEnumMemberName("Budget / Cost Estimate")] BudgetCostEstimate,
+    [JsonStringEnumMemberName("Bid Tab")] BidTab,
+    [JsonStringEnumMemberName("Draw Request")] DrawRequest,
     [JsonStringEnumMemberName("Operating Budget")] OperatingBudget,
-    [JsonStringEnumMemberName("Lender / Financing Document")] LenderFinancingDocument,
-    // Marketing & Corporate
-    [JsonStringEnumMemberName("Marketing Flyer / Brochure")] MarketingFlyerBrochure,
-    [JsonStringEnumMemberName("Proposal / Pitch Deck")] ProposalPitchDeck,
-    [JsonStringEnumMemberName("Entity / Corporate Governance")] EntityCorporateGovernance,
-    Correspondence,
-    // Retained from v2
-    [JsonStringEnumMemberName("Offer Memorandum")] OfferMemorandum,
-    [JsonStringEnumMemberName("Market Report")] MarketReport,
     Other,
 }
 
-public enum ProcessingStep
-{
-    Fetch,
-    Extract,
-    ClassifyType,
-    ExtractMetadata,
-    Route,
-    WriteMetadata,
-}
+
