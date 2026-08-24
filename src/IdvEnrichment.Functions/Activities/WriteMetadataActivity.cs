@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -7,7 +8,7 @@ using Microsoft.Graph.Sites.Item.Lists.Item.Items.Item.Fields;
 
 namespace IdvEnrichment.Functions.Activities;
 
-public sealed class WriteMetadataActivity(GraphServiceClient graphClient)
+public sealed class WriteMetadataActivity(GraphServiceClient graphClient, TaxonomyLoader taxonomyLoader)
 {
     private const string GraphBaseUrl = "https://graph.microsoft.com/v1.0";
 
@@ -17,24 +18,40 @@ public sealed class WriteMetadataActivity(GraphServiceClient graphClient)
         CancellationToken ct = default)
     {
         var result = input.Result;
+        var taxonomy = await taxonomyLoader.LoadAsync(ct);
 
-        var fields = new FieldValueSet
+        var data = new Dictionary<string, object>
         {
-            AdditionalData = new Dictionary<string, object>
-            {
-                ["DocumentType"] = JsonSerializer.Serialize(result.TypeClassification.DocumentType).Trim('"'),
-                ["DealType"] = result.Metadata?.DealType.Value ?? string.Empty,
-                ["Submarket"] = result.Metadata?.Submarket.Value ?? string.Empty,
-                ["Counterparty"] = result.Metadata?.Counterparty.Value ?? string.Empty,
-                ["Confidentiality"] = result.Metadata?.Confidentiality.Value ?? string.Empty,
-                ["AIConfidence"] = result.TypeClassification.Confidence,
-                ["AIProcessingStatus"] = result.RoutingDecision == RoutingDecision.Write ? "Classified" : "Under Review",
-                ["AIClassifiedDate"] = DateTimeOffset.UtcNow.ToString("o"),
-                ["TypeSpecificFields"] = JsonSerializer.Serialize(result.Metadata?.TypeSpecificFields),
-                ["SuggestedFields"] = JsonSerializer.Serialize(result.Metadata?.SuggestedFields),
-                ["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata }),
-            }
+            ["DocumentType"] = JsonSerializer.Serialize(result.TypeClassification.DocumentType).Trim('"'),
+            ["AIConfidence"] = result.TypeClassification.Confidence,
+            ["AIProcessingStatus"] = result.RoutingDecision == RoutingDecision.Write ? "Classified" : "Under Review",
+            ["AIClassifiedDate"] = DateTimeOffset.UtcNow.ToString("o"),
         };
+
+        if (result.Metadata is { } meta)
+        {
+            // Map each extracted content field (keyed by field_name) to its SharePoint column.
+            var columnByField = taxonomy.ContentFields()
+                .ToDictionary(f => f.FieldName, f => f.SharepointColumn, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (fieldName, classification) in meta.Fields)
+            {
+                if (string.IsNullOrWhiteSpace(classification.Value))
+                {
+                    continue; // skip empty values so we don't clobber columns with blanks
+                }
+
+                var column = columnByField.TryGetValue(fieldName, out var col) && !string.IsNullOrEmpty(col)
+                    ? col
+                    : fieldName; // type-specific fields (e.g., discipline) fall back to their field name
+                data[column] = classification.Value;
+            }
+
+            data["SuggestedFields"] = JsonSerializer.Serialize(meta.SuggestedFields);
+            data["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata });
+        }
+
+        var fields = new FieldValueSet { AdditionalData = data };
 
         // Graph SDK v5 does not expose the Fields sub-path via Drives.Items.ListItem;
         // use the raw-URL constructor on FieldsRequestBuilder to target the correct endpoint.

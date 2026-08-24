@@ -40,7 +40,7 @@ public static class PromptRenderer
         return _extractMetadata(new
         {
             documentType = docTypeLabel,
-            commonCategories = taxonomy.CommonCategories,
+            contentFields = taxonomy.ContentFields(),
             specificFields = docTypeDef?.SpecificFields ?? [],
         });
     }

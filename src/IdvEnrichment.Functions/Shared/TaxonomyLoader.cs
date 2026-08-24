@@ -37,6 +37,6 @@ public sealed class TaxonomyLoader(IOptions<PipelineSettings> settings, TokenCre
             .Build();
 
         var config = deserializer.Deserialize<TaxonomyConfig>(yaml);
-        return new TaxonomyData(config.DocumentTypes, config.CommonCategories, config.ConfidenceThresholds);
+        return new TaxonomyData(config.DocumentTypes, config.Metadata, config.ConfidenceThresholds);
     }
 }

@@ -35,15 +35,22 @@ public static class MetadataSchemaBuilder
     {
         var docTypeDef = taxonomy.GetDocumentType(documentType);
 
-        var typeSpecificProperties = new Dictionary<string, object>();
-        var typeSpecificRequired = new List<string>();
+        // One flat `fields` object keyed by field_name: all taxonomy content fields plus any
+        // document-type-specific fields (e.g., Design Drawing → discipline). Each value is a
+        // {value, confidence, reasoning} classification.
+        var fieldProperties = new Dictionary<string, object>();
+        var fieldRequired = new List<string>();
+
+        foreach (var field in taxonomy.ContentFields())
+        {
+            fieldProperties[field.FieldName] = new Dictionary<string, object> { ["$ref"] = "#/$defs/categoryClassification" };
+            fieldRequired.Add(field.FieldName);
+        }
+
         foreach (var field in docTypeDef?.SpecificFields ?? [])
         {
-            typeSpecificProperties[field.Name] = new Dictionary<string, object>
-            {
-                ["$ref"] = "#/$defs/categoryClassification",
-            };
-            typeSpecificRequired.Add(field.Name);
+            fieldProperties[field.Name] = new Dictionary<string, object> { ["$ref"] = "#/$defs/categoryClassification" };
+            fieldRequired.Add(field.Name);
         }
 
         var schema = new Dictionary<string, object>
@@ -51,15 +58,11 @@ public static class MetadataSchemaBuilder
             ["type"] = "object",
             ["properties"] = new Dictionary<string, object>
             {
-                ["dealType"] = new Dictionary<string, object> { ["$ref"] = "#/$defs/categoryClassification" },
-                ["submarket"] = new Dictionary<string, object> { ["$ref"] = "#/$defs/categoryClassification" },
-                ["counterparty"] = new Dictionary<string, object> { ["$ref"] = "#/$defs/categoryClassification" },
-                ["confidentiality"] = new Dictionary<string, object> { ["$ref"] = "#/$defs/categoryClassification" },
-                ["typeSpecificFields"] = new Dictionary<string, object>
+                ["fields"] = new Dictionary<string, object>
                 {
                     ["type"] = "object",
-                    ["properties"] = typeSpecificProperties,
-                    ["required"] = typeSpecificRequired,
+                    ["properties"] = fieldProperties,
+                    ["required"] = fieldRequired,
                     ["additionalProperties"] = false,
                 },
                 ["suggestedFields"] = new Dictionary<string, object>
@@ -68,7 +71,7 @@ public static class MetadataSchemaBuilder
                     ["items"] = new Dictionary<string, object> { ["$ref"] = "#/$defs/suggestedField" },
                 },
             },
-            ["required"] = new[] { "dealType", "submarket", "counterparty", "confidentiality", "typeSpecificFields", "suggestedFields" },
+            ["required"] = new[] { "fields", "suggestedFields" },
             ["additionalProperties"] = false,
             ["$defs"] = new Dictionary<string, object>
             {

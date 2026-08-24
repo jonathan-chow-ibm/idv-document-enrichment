@@ -1,430 +1,291 @@
-version: "3.0"
-last_updated: "2026-08-20"
+version: "4.0"
+last_updated: "2026-08-21"
 approved_by: "Pending SME review"
 
-# Types derived from analysis of TX DFW Risinger sample project.
-# Offer Memorandum and Market Report not present in sample — retained from v2.
-# Additional types expected as other projects are analysed.
+# ---------------------------------------------------------------------------
+# Built directly from the client "Meta Data Request.xlsx" — their most-used file
+# types and requested metadata. Scope for this pass: adopt the client's stated
+# document types and metadata set as-is.
+#
+# Document types present in the sample project but NOT on the client's list route
+# to "Other" for now (Marketing Flyer, Proposal/Pitch Deck, Correspondence, Permit,
+# Entity/Governance, Market Report, Listing Agreement, Title Commitment/Policy).
+# Flagged for SME review — do not silently drop; confirm before adding back.
+#
+# Metadata is ONE consistent set applied across all types, grouped by how each field
+# is populated:
+#   folder   = parsed from the SharePoint folder path (deterministic; no AI, no threshold)
+#   system   = SharePoint / library native (no extraction)
+#   content  = extracted from document text by the AI pipeline (Agent 2; has thresholds)
+#
+# NOTE (pipeline impact): this replaces v3's `common_categories` with the provenance-
+# grouped `metadata` block. TaxonomyLoader / MetadataSchemaBuilder must be updated to
+# read `metadata.content.*` and `confidence_thresholds.agent2_content`.
+# ---------------------------------------------------------------------------
 
 document_types:
 
-  # --- Transaction & Legal ---
-
-  - label: "Listing Agreement"
-    description: "Broker listing agreement for lease or sale of property"
-    specific_fields:
-      - name: listingType
-        description: "Lease, Sale, or Both"
-      - name: listingBroker
-        description: "Brokerage firm name"
-      - name: ownerClient
-        description: "Property owner or client entity"
-      - name: commissionRate
-        description: "Commission rate or amount"
-      - name: listingStart
-        description: "Listing start date"
-      - name: listingExpiration
-        description: "Listing expiration date"
-      - name: exclusivityType
-        description: "Exclusive or open listing"
-
+  # --- Contracts (source files PDF; drafts are in Word) ---
+  - label: "PSA - Acquisition"
+    group: "Contracts"
+    description: "Purchase & sale agreement where the client is acquiring the property"
+  - label: "PSA - Disposition"
+    group: "Contracts"
+    description: "Purchase & sale agreement where the client is disposing of the property"
+  - label: "Lease"
+    group: "Contracts"
+    description: "Lease agreement"
+  - label: "Lease Amendment"
+    group: "Contracts"
+    description: "Amendment or modification to an existing lease"
+  - label: "Vendor Contract"
+    group: "Contracts"
+    description: "Service/vendor agreement (GC, civil, architectural, engineering, etc.)"
+  - label: "Commission Agreement"
+    group: "Contracts"
+    description: "Broker commission agreement"
+  - label: "Loan Agreement"
+    group: "Contracts"
+    description: "Executed loan or financing agreement"
+  - label: "JV Agreement"
+    group: "Contracts"
+    description: "Joint venture agreement"
+  - label: "Development Agreement"
+    group: "Contracts"
+    description: "Development services / development management agreement"
   - label: "Letter of Intent"
+    group: "Contracts"
     description: "LOI for lease or purchase"
+  - label: "Term Sheet"
+    group: "Contracts"
+    description: "Financing or deal term sheet (typically a proposal, not executed)"
+
+  # --- Drawing Files (PDF; some CAD) ---
+  - label: "Survey"
+    group: "Drawing Files"
+    description: "ALTA, boundary, or topographic survey"
+  - label: "Plat"
+    group: "Drawing Files"
+    description: "Recorded or preliminary plat"
+  - label: "Design Drawing"
+    group: "Drawing Files"
+    description: "Design/construction drawing set. Classify-only for image/CAD files — capture type + discipline, not deep fields."
     specific_fields:
-      - name: loiType
-        description: "Lease or Purchase"
-      - name: proposingParty
-        description: "Party proposing the LOI"
-      - name: receivingParty
-        description: "Party receiving the LOI"
-      - name: proposedPriceOrRate
-        description: "Proposed purchase price or lease rate"
-      - name: keyTermsSummary
-        description: "Summary of key proposed terms"
-      - name: responseDeadline
-        description: "Deadline for response or acceptance"
+      - name: discipline
+        description: "Drawing discipline"
+        allowed_values: ["Architectural", "Civil", "Landscape", "Structural", "Mechanical", "Electrical", "Plumbing"]
 
-  - label: "Purchase & Sale Agreement"
-    description: "Executed or draft purchase/sale contract"
-    specific_fields:
-      - name: buyer
-        description: "Buyer / purchaser entity"
-      - name: seller
-        description: "Seller entity"
-      - name: purchasePrice
-        description: "Agreed purchase price"
-      - name: earnestMoney
-        description: "Earnest money deposit amount"
-      - name: closingDate
-        description: "Scheduled closing date"
-      - name: dueDiligenceDeadline
-        description: "Due diligence period expiration"
-      - name: titleCompany
-        description: "Title company handling the transaction"
-      - name: executionStatus
-        description: "Draft or Executed"
+  # --- Reports (PDF) ---
+  - label: "Closing Statement"
+    group: "Reports"
+    description: "Settlement statement, HUD-1, or closing statement"
+  - label: "Environmental Survey"
+    group: "Reports"
+    description: "Phase I/II ESA and other environmental reports"
+  - label: "Geotechnical Report"
+    group: "Reports"
+    description: "Geotechnical engineering report"
+  - label: "Easement Document"
+    group: "Reports"
+    description: "Easement, encroachment, or related recorded document"
 
-  - label: "Lease / Development / JV Agreement"
-    description: "Executed or draft lease, development, or joint venture agreement"
-    specific_fields:
-      - name: agreementType
-        description: "Lease, Development, or JV"
-      - name: tenantOrDeveloper
-        description: "Tenant or developer entity"
-      - name: landlordOrOwner
-        description: "Landlord or property owner entity"
-      - name: jvPartners
-        description: "Joint venture partner entities (if JV)"
-      - name: term
-        description: "Agreement term or duration"
-      - name: rentalRateOrDevFee
-        description: "Rental rate, development fee, or promote structure"
-      - name: commencementDate
-        description: "Agreement commencement date"
-      - name: expirationDate
-        description: "Agreement expiration date"
-      - name: squareFootage
-        description: "Leased or developed square footage"
-
-  - label: "Closing Document"
-    description: "Closing statements, deeds, and recorded transaction documents"
-    specific_fields:
-      - name: closingDate
-        description: "Date of closing"
-      - name: grantorSeller
-        description: "Grantor or seller entity"
-      - name: granteeBuyer
-        description: "Grantee or buyer entity"
-      - name: salePriceConsideration
-        description: "Sale price or consideration amount"
-      - name: titleCompanyEscrow
-        description: "Title company and GF/escrow number"
-      - name: recordingInfo
-        description: "Recording instrument number, volume, and page"
-      - name: legalDescription
-        description: "Legal description of the property"
-
-  - label: "Title & Survey"
-    description: "Title commitments, title policies, and surveys"
-    specific_fields:
-      - name: titleCompany
-        description: "Title company issuing the commitment or policy"
-      - name: commitmentGFNumber
-        description: "Commitment or GF number"
-      - name: effectiveDate
-        description: "Effective date of the title commitment"
-      - name: acreage
-        description: "Property acreage"
-      - name: easements
-        description: "Easements identified on the property"
-      - name: scheduleBExceptions
-        description: "Schedule B exceptions to title"
-      - name: surveyor
-        description: "Surveying firm or individual"
-      - name: surveyDate
-        description: "Date of the survey"
-
-  # --- Due Diligence & Entitlements ---
-
-  - label: "Environmental Report"
-    description: "Phase I/II ESA, geotechnical, SWPPP, NOI, and other environmental reports"
-    specific_fields:
-      - name: reportType
-        description: "Phase I ESA, Phase II ESA, Geotech, SWPPP, NOI, or other"
-      - name: consultant
-        description: "Consulting firm that prepared the report"
-      - name: reportDate
-        description: "Date of the report"
-      - name: acreage
-        description: "Property acreage covered"
-      - name: findingsRECs
-        description: "Key findings and recognized environmental conditions"
-      - name: recommendations
-        description: "Recommended actions or follow-up"
-      - name: regulatoryPermitNumber
-        description: "Regulatory permit number (e.g., TPDES permit TXR...)"
-
-  - label: "Plat / Site Plan"
-    description: "Recorded plats, site plans, and zoning documents"
-    specific_fields:
-      - name: subtype
-        description: "Plat, Site Plan, or Zoning"
-      - name: jurisdiction
-        description: "City or county jurisdiction"
-      - name: caseNumber
-        description: "Municipal case or application number (e.g., PDC-25-0212)"
-      - name: acreage
-        description: "Total acreage"
-      - name: lotsBlocks
-        description: "Number of lots and blocks"
-      - name: zoning
-        description: "Zoning classification"
-      - name: engineerSurveyor
-        description: "Engineer or surveyor of record"
-      - name: revisionDate
-        description: "Most recent revision date"
-
-  - label: "Permit / Municipal Approval"
-    description: "Building permits, stormwater permits, utility permits, and municipal approvals"
-    specific_fields:
-      - name: permitType
-        description: "Plat, Building, Stormwater, Utility, or Bond"
-      - name: agency
-        description: "Issuing agency (city, county, or state)"
-      - name: permitCaseNumber
-        description: "Permit or case number"
-      - name: status
-        description: "Approved, Pending, Deficiency, or Conditional"
-      - name: issueDate
-        description: "Permit issue date"
-      - name: conditions
-        description: "Conditions of approval"
-
-  - label: "Utility & Easement Agreement"
-    description: "Utility service agreements, easements, encroachments, and CFA/availability agreements"
-    specific_fields:
-      - name: utilityType
-        description: "Water, Sewer, Power, Gas, or Stormwater"
-      - name: provider
-        description: "Utility provider (e.g., Oncor, City of Fort Worth, BKV)"
-      - name: agreementType
-        description: "Easement, Encroachment, CFA, or Availability"
-      - name: parties
-        description: "Named parties to the agreement"
-      - name: recordingInfo
-        description: "Recording instrument number"
-      - name: effectiveDate
-        description: "Agreement effective date"
-
-  # --- Financial ---
-
-  - label: "Financial Model / Pro Forma"
-    description: "Pro forma, sensitivity analysis, return models, and cash flow projections"
-    specific_fields:
-      - name: modelType
-        description: "ProForma, Sensitivity, or Return model"
-      - name: scenario
-        description: "Scenario name or lender (e.g., Sealy, Hancock Whitney)"
-      - name: irr
-        description: "Internal rate of return"
-      - name: equityMultiple
-        description: "Equity multiple"
-      - name: yieldOnCost
-        description: "Yield on cost"
-      - name: totalDevCost
-        description: "Total development cost"
-      - name: stabilizedNOI
-        description: "Stabilized net operating income"
-      - name: holdPeriod
-        description: "Projected hold period"
-      - name: modelVersionDate
-        description: "Model version or date"
-
+  # --- Budget Files (Excel) ---
+  - label: "Proforma"
+    group: "Budget Files"
+    description: "Development pro forma / financial model"
+  - label: "Budget / Cost Estimate"
+    group: "Budget Files"
+    description: "Development budget or cost estimate"
+  - label: "Bid Tab"
+    group: "Budget Files"
+    description: "Bid tabulation / GC bid comparison"
+  - label: "Draw Request"
+    group: "Budget Files"
+    description: "Construction loan draw request"
   - label: "Operating Budget"
-    description: "Annual operating budgets and revenue/expense projections"
-    specific_fields:
-      - name: budgetYear
-        description: "Fiscal year covered by the budget"
-      - name: totalRevenue
-        description: "Total projected revenue"
-      - name: totalOpEx
-        description: "Total operating expenses"
-      - name: noi
-        description: "Net operating income"
-      - name: preparer
-        description: "Person or firm that prepared the budget"
-      - name: exhibitRef
-        description: "Exhibit reference (e.g., JVA Exhibit C)"
-
-  - label: "Lender / Financing Document"
-    description: "Loan term sheets, proposals, commitments, and financing agreements"
-    specific_fields:
-      - name: lender
-        description: "Lending institution"
-      - name: loanType
-        description: "Construction, Permanent, or Bridge"
-      - name: loanAmount
-        description: "Loan amount"
-      - name: rateSpread
-        description: "Interest rate or spread over index"
-      - name: ltvLtc
-        description: "LTV or LTC ratio"
-      - name: termAmortization
-        description: "Loan term and amortization period"
-      - name: recourse
-        description: "Recourse or non-recourse"
-      - name: maturityDate
-        description: "Loan maturity date"
-      - name: status
-        description: "Term Sheet, Proposal, or Executed"
-
-  # --- Marketing & Corporate ---
-
-  - label: "Marketing Flyer / Brochure"
-    description: "Property marketing flyers, brochures, and availability sheets"
-    specific_fields:
-      - name: propertyType
-        description: "Property type (Industrial, Office, Retail, etc.)"
-      - name: sizeSFAcreage
-        description: "Building size in SF or land acreage"
-      - name: askingRatePrice
-        description: "Asking rate per SF or sale price"
-      - name: availabilityDeliveryDate
-        description: "Available date or delivery date"
-      - name: listingBrokers
-        description: "Listing brokers and contact information"
-      - name: highlights
-        description: "Key property highlights or features"
-
-  - label: "Proposal / Pitch Deck"
-    description: "Investment committee presentations, client pitches, and JV proposals"
-    specific_fields:
-      - name: proposalType
-        description: "IC presentation, Client Pitch, or JV proposal"
-      - name: audience
-        description: "Intended audience"
-      - name: project
-        description: "Project or property name"
-      - name: keyMetricsSummary
-        description: "Summary of key financial or deal metrics"
-      - name: date
-        description: "Presentation date"
-
-  - label: "Entity / Corporate Governance"
-    description: "Certificates of formation, operating agreements, consents, and resolutions"
-    specific_fields:
-      - name: subtype
-        description: "Certificate of Formation, Operating Agreement, Written Consent, or Resolution"
-      - name: entityName
-        description: "Legal entity name (e.g., IDV Risinger LLC)"
-      - name: entityType
-        description: "LLC, LP, or other entity type"
-      - name: state
-        description: "State of formation"
-      - name: filingDate
-        description: "Filing or execution date"
-      - name: fileNumber
-        description: "Secretary of state file number"
-      - name: signatoriesManagers
-        description: "Signatories or managers named in the document"
-
-  - label: "Correspondence"
-    description: "Emails, letters, and memos"
-    specific_fields:
-      - name: sender
-        description: "Person or entity who sent the correspondence"
-      - name: recipient
-        description: "Person or entity receiving the correspondence"
-      - name: subject
-        description: "Subject line or topic"
-      - name: date
-        description: "Date of the correspondence"
-
-  # --- Retained from v2 (not in development sample) ---
-
-  - label: "Offer Memorandum"
-    description: "Property marketing package with financials and investment summary"
-    specific_fields:
-      - name: propertyName
-        description: "Name of the property being marketed"
-      - name: askingPrice
-        description: "Listed asking price"
-      - name: capRate
-        description: "Capitalization rate"
-      - name: noi
-        description: "Net operating income"
-      - name: squareFootage
-        description: "Total building square footage"
-      - name: propertyType
-        description: "Property type (e.g., Industrial, Office, Retail)"
-
-  - label: "Market Report"
-    description: "Broker market research, quarterly reports, or market surveys"
-    specific_fields:
-      - name: reportPeriod
-        description: "Time period covered (e.g., Q2 2024)"
-      - name: marketArea
-        description: "Geographic market area covered"
-      - name: vacancyRate
-        description: "Reported vacancy rate"
-      - name: absorption
-        description: "Net absorption figure"
-      - name: avgRentalRate
-        description: "Average rental rate reported"
+    group: "Budget Files"
+    description: "Annual operating budget"
 
   - label: "Other"
-    description: "Does not fit any above category"
-    specific_fields: []
+    group: "Other"
+    description: "Does not fit a client-listed type (incl. marketing, correspondence, permits, entity docs, market reports) — pending SME review"
 
-common_categories:
-  - name: "Deal Type"
-    field_name: "dealType"
-    sharepoint_column: "DealType"
-    description: "The type of real estate transaction or activity described in the document"
-    allowed_values:
-      - label: "Lease"
-        description: "Lease agreement, lease proposal, or lease-related correspondence"
-      - label: "Sale"
-        description: "Purchase/sale agreement, offering memorandum, or sales-related document"
-      - label: "Development"
-        description: "New construction, ground-up development, or build-to-suit project"
-      - label: "Acquisition"
-        description: "Property acquisition, due diligence, or investment analysis"
-      - label: "Disposition"
-        description: "Property disposition, marketing package, or exit strategy"
-      - label: "Financing"
-        description: "Loan documents, financing proposals, or debt-related materials"
-      - label: "Other"
-        description: "Does not clearly fit any above category"
-    decision_rules:
-      - "If a document discusses both lease and sale terms, classify by the PRIMARY transaction"
-      - "Offering memorandums are typically 'Sale' unless explicitly a lease proposal"
-      - "Development pipeline reports are 'Development' even if they mention future leasing"
+# ---------------------------------------------------------------------------
+# METADATA — one consistent set applied across all document types.
+# ---------------------------------------------------------------------------
+metadata:
 
-  - name: "Submarket"
-    field_name: "submarket"
-    sharepoint_column: "Submarket"
-    description: "The geographic submarket or area where the property is located"
-    is_freetext: true
-    decision_rules:
-      - "Extract the city, neighborhood, or submarket name from the document"
-      - "Use street addresses and area references to determine location"
-      - "If location cannot be determined, use 'Unknown'"
+  # Folder-derived: parsed once from the project folder "{State} {Metro} {Project}".
+  # Set as SharePoint folder default column values; no AI, no confidence threshold.
+  folder_derived:
+    - field_name: state
+      sharepoint_column: "State"
+      description: "US state (from folder prefix, e.g., TX, OK)"
+    - field_name: propertyName
+      sharepoint_column: "PropertyName"
+      description: "Property name (from folder project segment, e.g., Risinger)"
+    - field_name: projectName
+      sharepoint_column: "ProjectName"
+      description: "Project / development name (from folder; may equal Property Name)"
 
-  - name: "Counterparty"
-    field_name: "counterparty"
-    sharepoint_column: "Counterparty"
-    description: "The external company, broker, or entity involved in the transaction"
-    is_freetext: true
-    decision_rules:
-      - "Extract the company name from letterhead, signature blocks, or broker identification"
-      - "For brokerage reports, use the brokerage firm name (e.g., 'CBRE', 'JLL')"
-      - "If no counterparty can be identified, use 'Unknown'"
+  # System / native: provided by SharePoint or the file itself — not AI-extracted.
+  system:
+    - field_name: documentTitle
+      sharepoint_column: "Title"
+      description: "Document title (file name)"
+    - field_name: author
+      sharepoint_column: "Author"
+      description: "Author (from library metadata)"
+    - field_name: lastModified
+      sharepoint_column: "Modified"
+      description: "Last modified date (from library metadata)"
+    - field_name: sourceSystem
+      sharepoint_column: "SourceSystem"
+      description: "Originating system / library (operational tag)"
 
-  - name: "Confidentiality"
-    field_name: "confidentiality"
-    sharepoint_column: "Confidentiality"
-    description: "The confidentiality classification of the document"
-    allowed_values:
-      - label: "Public"
-        description: "No confidentiality restrictions; publicly available information"
-      - label: "Internal"
-        description: "For internal use only; standard business documents"
-      - label: "Confidential"
-        description: "Contains confidentiality notices, NDA-covered material, or sensitive financial terms"
-      - label: "Highly Confidential"
-        description: "Contains trade secrets, executive compensation, litigation material"
-    decision_rules:
-      - "Look for explicit confidentiality notices, watermarks, or disclaimers"
-      - "Executed agreements with financial terms are at minimum 'Confidential'"
-      - "If no confidentiality indicators present, default to 'Internal'"
-      - "When in doubt, classify UP (more restrictive), never down"
+  # Content-extracted: pulled from document text by the AI pipeline (Agent 2).
+  content:
+
+    # Universal — reliably present on most documents.
+    universal:
+      - field_name: documentStatus
+        sharepoint_column: "DocumentStatus"
+        description: "Lifecycle status of the document"
+        allowed_values: ["Draft", "Executed", "Final", "Superseded"]
+        decision_rules:
+          - "Signed/executed agreements (incl. DocuSign) are 'Executed'"
+          - "Recorded instruments are 'Final'"
+          - "Marked drafts/redlines are 'Draft'"
+      - field_name: counterparty
+        sharepoint_column: "Counterparty"
+        description: "External company or entity opposite the client (broker, lender, buyer/seller, vendor)"
+        is_freetext: true
+      - field_name: transactionType
+        sharepoint_column: "TransactionType"
+        description: "Type of transaction the document relates to"
+        allowed_values:
+          - "Acquisition"
+          - "Disposition"
+          - "Lease"
+          - "Easement"
+          - "Development Agreement"
+          - "Loan"
+          - "Construction Contract"
+        decision_rules:
+          - "Use the numbered project subfolder as a prior (03-Acq→Acquisition, 06-Dispo→Disposition, 04-Des & Const→Construction Contract); override only if document content clearly disagrees"
+      - field_name: executionDate
+        sharepoint_column: "ExecutionDate"
+        description: "Date the document was executed/signed"
+      - field_name: effectiveDate
+        sharepoint_column: "EffectiveDate"
+        description: "Effective date"
+      - field_name: expirationDate
+        sharepoint_column: "ExpirationDate"
+        description: "Expiration date (if applicable)"
+
+    # Property — populate mainly from title, survey, plat, ESA; sparse on other types.
+    property:
+      - field_name: propertyAddress
+        sharepoint_column: "PropertyAddress"
+        description: "Street address of the property"
+        is_freetext: true
+      - field_name: parcelId
+        sharepoint_column: "ParcelID"
+        description: "Tax parcel / account ID"
+        is_freetext: true
+      - field_name: county
+        sharepoint_column: "County"
+        description: "County the property is located in"
+        is_freetext: true
+      - field_name: cityJurisdiction
+        sharepoint_column: "CityJurisdiction"
+        description: "City or ETJ jurisdiction"
+        is_freetext: true
+      - field_name: acres
+        sharepoint_column: "Acres"
+        description: "Land acreage"
+      - field_name: squareFootage
+        sharepoint_column: "SquareFootage"
+        description: "Building square footage"
+      - field_name: landUse
+        sharepoint_column: "LandUse"
+        description: "Land use type"
+        is_freetext: true
+      - field_name: zoning
+        sharepoint_column: "Zoning"
+        description: "Zoning classification"
+        is_freetext: true
+      - field_name: opportunityZone
+        sharepoint_column: "OpportunityZone"
+        description: "Whether the property is in an Opportunity Zone"
+        allowed_values: ["Yes", "No", "Unknown"]
+
+    # Transaction — populate on transaction docs (PSA, lease, loan, closing); sparse elsewhere.
+    transaction:
+      - field_name: seller
+        sharepoint_column: "Seller"
+        description: "Seller / grantor entity"
+        is_freetext: true
+      - field_name: buyer
+        sharepoint_column: "Buyer"
+        description: "Buyer / grantee entity"
+        is_freetext: true
+      - field_name: broker
+        sharepoint_column: "Broker"
+        description: "Broker involved in the transaction"
+        is_freetext: true
+      - field_name: titleCompany
+        sharepoint_column: "TitleCompany"
+        description: "Title company / escrow agent"
+        is_freetext: true
+      - field_name: closingDate
+        sharepoint_column: "ClosingDate"
+        description: "Closing date"
+      - field_name: purchasePrice
+        sharepoint_column: "PurchasePrice"
+        description: "Purchase / sale price"
+      - field_name: earnestMoney
+        sharepoint_column: "EarnestMoney"
+        description: "Earnest money deposit"
+      - field_name: depositAmount
+        sharepoint_column: "DepositAmount"
+        description: "Deposit amount"
+      - field_name: contractValue
+        sharepoint_column: "ContractValue"
+        description: "Total contract value"
+
+    # Ownership — from the CoPilot-suggested Layer 1 list (validate at SME review).
+    ownership:
+      - field_name: entityName
+        sharepoint_column: "EntityName"
+        description: "Legal entity named in the document (e.g., IDV Risinger, LLC)"
+        is_freetext: true
+      - field_name: investorFund
+        sharepoint_column: "InvestorFund"
+        description: "Investor or fund party (if applicable)"
+        is_freetext: true
 
 confidence_thresholds:
   agent1_classification: 0.80
-  agent2_common:
-    dealType: 0.75
-    submarket: 0.75
+  agent2_content:
+    documentStatus: 0.75
     counterparty: 0.70
-    confidentiality: 0.85
-  agent2_specific_default: 0.80
+    transactionType: 0.75
+    default: 0.80
+
+# ---------------------------------------------------------------------------
+# CHANGES FROM v3 (for reviewers)
+# ---------------------------------------------------------------------------
+# + Document types now match the client's Meta Data Request groups (Contracts,
+#   Drawing Files, Reports, Budget Files) — contracts split to their granularity
+#   (PSA Acq/Dispo, Lease, Lease Amendment, JV, Development, Vendor, Commission,
+#   Term Sheet all separate); Design Drawing added with a discipline sub-field;
+#   Bid Tab and Draw Request added.
+# + Single consistent metadata set (universal/property/transaction/ownership),
+#   replacing per-type field lists.
+# + Fields grouped by provenance (folder / system / content).
+# - Submarket removed  → replaced by folder-derived State + content County/City.
+# - Confidentiality removed → not requested by the client, and it was the primary
+#   review-queue driver (unreliable AI guess). Handle sensitivity via Purview labels.
+# ~ Transaction Type replaces DealType with the client's 7 values (adds Easement,
+#   Construction Contract; Acquisition/Disposition instead of generic "Sale").
