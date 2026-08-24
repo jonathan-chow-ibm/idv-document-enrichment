@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Azure.AI.OpenAI;
 using IdvEnrichment.Functions.Configuration;
@@ -30,6 +31,7 @@ public sealed class ExtractMetadataActivity(
 
         var schema = MetadataSchemaBuilder.BuildSchema(input.DocumentType, taxonomy);
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiDeployment);
+        var sw = Stopwatch.StartNew();
         var completion = await OpenAiRetryHelper.ExecuteWithRetryAsync(
             () => chatClient.CompleteChatAsync(
                 [
@@ -67,8 +69,14 @@ public sealed class ExtractMetadataActivity(
         }
 
         var rawJson = completion.Value.Content[0].Text;
-        return JsonSerializer.Deserialize<MetadataExtractionResult>(rawJson)
+        var result = JsonSerializer.Deserialize<MetadataExtractionResult>(rawJson)
             ?? throw new InvalidOperationException(
                 $"Failed to deserialize metadata extraction response for document '{input.DocumentId}': {rawJson}");
+        return result with
+        {
+            InputTokens = completion.Value.Usage?.InputTokenCount ?? 0,
+            OutputTokens = completion.Value.Usage?.OutputTokenCount ?? 0,
+            DurationMs = (int)sw.Elapsed.TotalMilliseconds,
+        };
     }
 }

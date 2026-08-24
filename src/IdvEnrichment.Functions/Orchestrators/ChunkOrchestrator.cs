@@ -66,7 +66,11 @@ public sealed class ChunkOrchestrator
                 result.TypeClassification.DocumentType,
                 result.RoutingDecision,
                 result.TypeClassification.Confidence,
-                result.WriteBackSucceeded), true);
+                result.WriteBackSucceeded,
+                result.ProcessingMetrics.ClassificationInputTokens,
+                result.ProcessingMetrics.ClassificationOutputTokens,
+                result.ProcessingMetrics.ExtractionInputTokens,
+                result.ProcessingMetrics.ExtractionOutputTokens), true);
         }
         catch (OperationCanceledException)
         {

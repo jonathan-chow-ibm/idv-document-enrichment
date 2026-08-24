@@ -18,7 +18,7 @@ public sealed class RouteResultActivity(
         CancellationToken ct = default)
     {
         var taxonomy = await taxonomyLoader.LoadAsync(ct);
-        var (decision, lowConfidenceCategories) = DetermineRouting(input.Metadata, taxonomy.Thresholds);
+        var (decision, lowConfidenceCategories) = DetermineRouting(input.Metadata, taxonomy);
 
         var result = new EnrichmentResult(
             DocumentId: input.Message.DocumentId,
@@ -26,7 +26,13 @@ public sealed class RouteResultActivity(
             Extraction: input.Extraction,
             TypeClassification: input.TypeClassification,
             Metadata: input.Metadata,
-            ProcessingMetrics: new ProcessingMetrics(),
+            ProcessingMetrics: new ProcessingMetrics(
+                ClassificationDurationMs: input.TypeClassification.DurationMs,
+                MetadataExtractionDurationMs: input.Metadata?.DurationMs ?? 0,
+                ClassificationInputTokens: input.TypeClassification.InputTokens,
+                ClassificationOutputTokens: input.TypeClassification.OutputTokens,
+                ExtractionInputTokens: input.Metadata?.InputTokens ?? 0,
+                ExtractionOutputTokens: input.Metadata?.OutputTokens ?? 0),
             RoutingDecision: decision,
             LowConfidenceCategories: lowConfidenceCategories);
 
@@ -55,16 +61,10 @@ public sealed class RouteResultActivity(
             ["textLength"] = result.Extraction.TextLength,
         };
 
-        // Common category confidence scores
+        // Per-field confidence scores — adapts to whatever the taxonomy defines
         if (result.Metadata is { } meta)
         {
-            metrics["dealTypeConfidence"] = meta.DealType.Confidence;
-            metrics["submarketConfidence"] = meta.Submarket.Confidence;
-            metrics["counterpartyConfidence"] = meta.Counterparty.Confidence;
-            metrics["confidentialityConfidence"] = meta.Confidentiality.Confidence;
-
-            // Type-specific field confidence — adapts to whatever taxonomy defines
-            foreach (var (field, classification) in meta.TypeSpecificFields)
+            foreach (var (field, classification) in meta.Fields)
             {
                 metrics[$"field_{field}_confidence"] = classification.Confidence;
             }
@@ -75,25 +75,30 @@ public sealed class RouteResultActivity(
 
     private (RoutingDecision Decision, IReadOnlyList<string> LowConfidenceCategories) DetermineRouting(
         MetadataExtractionResult? metadata,
-        Models.ConfidenceThresholds thresholds)
+        TaxonomyData taxonomy)
     {
         if (metadata is null)
         {
             return (RoutingDecision.Review, []);
         }
 
-        var lowConfidence = new List<string>();
-        var commonFields = new (string Name, CategoryClassification Classification)[]
-        {
-            ("dealType", metadata.DealType),
-            ("submarket", metadata.Submarket),
-            ("counterparty", metadata.Counterparty),
-            ("confidentiality", metadata.Confidentiality),
-        };
+        var thresholds = taxonomy.Thresholds;
+        var universal = taxonomy.UniversalFieldNames();
+        var defaultThreshold = thresholds.Agent2Content.TryGetValue("default", out var d)
+            ? d
+            : settings.Value.ConfidenceThresholdDefault;
 
-        foreach (var (name, classification) in commonFields)
+        var lowConfidence = new List<string>();
+        foreach (var (name, classification) in metadata.Fields)
         {
-            var threshold = thresholds.Agent2Common.TryGetValue(name, out var t) ? t : settings.Value.ConfidenceThresholdDefault;
+            var hasValue = !string.IsNullOrWhiteSpace(classification.Value);
+            // Sparse fields (non-universal and empty) are "not applicable" to this document — don't force review.
+            if (!universal.Contains(name) && !hasValue)
+            {
+                continue;
+            }
+
+            var threshold = thresholds.Agent2Content.TryGetValue(name, out var t) ? t : defaultThreshold;
             if (classification.Confidence < threshold)
             {
                 lowConfidence.Add(name);

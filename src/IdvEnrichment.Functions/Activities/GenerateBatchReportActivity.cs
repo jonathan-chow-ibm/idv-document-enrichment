@@ -32,6 +32,11 @@ public sealed class GenerateBatchReportActivity(
             .GroupBy(r => JsonSerializer.Serialize(r.DocumentType).Trim('"'))
             .ToDictionary(g => g.Key, g => g.Count());
 
+        var classificationInputTokens = input.Results.Sum(r => (long)r.ClassificationInputTokens);
+        var classificationOutputTokens = input.Results.Sum(r => (long)r.ClassificationOutputTokens);
+        var extractionInputTokens = input.Results.Sum(r => (long)r.ExtractionInputTokens);
+        var extractionOutputTokens = input.Results.Sum(r => (long)r.ExtractionOutputTokens);
+
         var report = new BatchReport(
             BatchId: input.BatchId,
             Url: input.Url,
@@ -45,12 +50,11 @@ public sealed class GenerateBatchReportActivity(
                 Errors: input.Errors,
                 Skipped: 0),
             ConfidenceDistribution: new ConfidenceDistribution(High: high, Medium: medium, Low: low),
-            ErrorsByStep: new Dictionary<ProcessingStep, int>(),
             DocumentTypeCounts: typeCounts,
             Cost: new BatchCost(
                 DocumentIntelligence: 0m,
-                ClassificationTokens: new TokenUsage(0, 0),
-                ExtractionTokens: new TokenUsage(0, 0),
+                ClassificationTokens: new TokenUsage(classificationInputTokens, classificationOutputTokens),
+                ExtractionTokens: new TokenUsage(extractionInputTokens, extractionOutputTokens),
                 EstimatedTotalUsd: 0m));
 
         if (reportContainer is not null)

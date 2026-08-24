@@ -7,7 +7,11 @@ public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("documentType")] DocumentType DocumentType,
     [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
     [property: JsonPropertyName("typeConfidence")] double TypeConfidence,
-    [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded);
+    [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded,
+    [property: JsonPropertyName("classificationInputTokens")] int ClassificationInputTokens = 0,
+    [property: JsonPropertyName("classificationOutputTokens")] int ClassificationOutputTokens = 0,
+    [property: JsonPropertyName("extractionInputTokens")] int ExtractionInputTokens = 0,
+    [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0);
 
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
