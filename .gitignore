@@ -53,5 +53,22 @@ venv/
 .pytest_cache/
 .ipynb_checkpoints/
 
-# Sample files
-TX DFW Risinger/*
+# Client sample data — real documents, never commit.
+# Project folders follow "{STATE} {METRO} {Project}" naming — add new ones here as they land.
+TX DFW Risinger/
+TX HOU Flowserve/
+*.zip
+
+# Loose client documents dropped at the repo root (contracts, metadata requests, etc.)
+/*.docx
+/*.doc
+/*.xlsx
+/*.xlsm
+/*.pptx
+/*.msg
+
+# Pipeline / analysis outputs (contain extracted client data)
+char-analysis.csv
+result-*.json
+test-results/
+/infra/main.json
