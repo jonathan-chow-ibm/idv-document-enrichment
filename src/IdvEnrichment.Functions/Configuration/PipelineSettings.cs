@@ -12,6 +12,7 @@ public sealed class PipelineSettings
 
     public string OpenAiDeployment { get; init; } = "gpt-4o";
 
+    // gpt-4o-mini unavailable in East US; override via app settings to match the actual deployment name
     public string OpenAiMiniDeployment { get; init; } = "gpt-4o-mini";
 
     [Required]
