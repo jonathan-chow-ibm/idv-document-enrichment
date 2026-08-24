@@ -2,7 +2,14 @@
 
 ## Status
 
-Accepted
+Superseded
+
+## Superseded By
+
+The Power Automate trigger-mode path was not implemented. `WriteMetadataActivity` (Graph API
+via `Microsoft.Graph`) handles write-back for both trigger and batch modes. The action-limit
+concern only applied to batch scale; single-document trigger mode never approached that limit.
+The hybrid complexity was eliminated in favour of a single write-back path.
 
 ## Date
 
