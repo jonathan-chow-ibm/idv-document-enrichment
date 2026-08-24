@@ -1,7 +1,10 @@
 <#
 .SYNOPSIS
-    Provisions SharePoint metadata columns on a document library
+    Provisions the taxonomy v4 metadata columns on a SharePoint document library
     via Microsoft Graph API. Run after Graph permissions are granted.
+
+    Columns mirror docs/taxonomy/taxonomy.yaml (v4). Review is handled inline via a
+    filtered library view on AIProcessingStatus (ADR-006) — no separate review list.
 
 .PARAMETER SiteUrl
     SharePoint site URL. Example: "contoso.sharepoint.com:/sites/ActiveProjects"
@@ -52,30 +55,87 @@ $docListId = $docList.id
 
 Write-Host "Library: $DocumentLibraryName (listId: $docListId, driveId: $($drive.id))" -ForegroundColor Cyan
 
-# --- Column definitions for the document library ---
+# --- Choice value sets (keep in sync with taxonomy.yaml v4) ---
+$documentTypes = @(
+    "PSA - Acquisition", "PSA - Disposition", "Lease", "Lease Amendment", "Vendor Contract",
+    "Commission Agreement", "Loan Agreement", "JV Agreement", "Development Agreement",
+    "Letter of Intent", "Term Sheet",
+    "Survey", "Plat", "Design Drawing",
+    "Closing Statement", "Environmental Survey", "Geotechnical Report", "Easement Document",
+    "Proforma", "Budget / Cost Estimate", "Bid Tab", "Draw Request", "Operating Budget",
+    "Other"
+)
+$transactionTypes = @("Acquisition", "Disposition", "Lease", "Easement", "Development Agreement", "Loan", "Construction Contract")
+$documentStatuses = @("Draft", "Executed", "Final", "Superseded")
+$disciplines      = @("Architectural", "Civil", "Landscape", "Structural", "Mechanical", "Electrical", "Plumbing")
+
+# --- Column definitions (v4) ---
+# Folder-derived columns (State/PropertyName/ProjectName) are created here but should be POPULATED
+# via SharePoint folder default column values, not by the pipeline. See notes at the end.
 $columns = @(
-    @{ name = "DocumentType"; displayName = "Document Type"; choice = @{ choices = @("Lease Agreement","Offer Memorandum","Market Report","Purchase Agreement","Letter of Intent","Financial Analysis","Due Diligence","Correspondence","Presentation","Other") } }
-    @{ name = "DealType"; displayName = "Deal Type"; choice = @{ choices = @("Lease","Sale","Development","Acquisition","Disposition","Financing","Other") } }
-    @{ name = "Submarket"; displayName = "Submarket"; choice = @{ choices = @("Northwest Houston","North Houston","Northeast Houston","Katy/West Houston","Southwest Houston","Southeast Houston","Central Houston","Multiple","Unknown") } }
-    @{ name = "Counterparty"; displayName = "Counterparty"; text = @{} }
-    @{ name = "Confidentiality"; displayName = "Confidentiality"; choice = @{ choices = @("Public","Internal","Confidential","Highly Confidential") } }
+    # -- Classification / operational (AI) --
+    @{ name = "DocumentType"; displayName = "Document Type"; choice = @{ choices = $documentTypes } }
     @{ name = "AIConfidence"; displayName = "AI Confidence"; number = @{} }
     @{ name = "AIProcessingStatus"; displayName = "AI Processing Status"; choice = @{ choices = @("Classified","Under Review","Failed","Reviewed") } }
     @{ name = "AIClassifiedDate"; displayName = "AI Classified Date"; dateTime = @{} }
-    @{ name = "TypeSpecificFields"; displayName = "Type Specific Fields"; text = @{ allowMultipleLines = $true } }
     @{ name = "SuggestedFields"; displayName = "Suggested Fields"; text = @{ allowMultipleLines = $true } }
     @{ name = "AIOriginalClassification"; displayName = "AI Original Classification"; text = @{ allowMultipleLines = $true } }
+    @{ name = "SourceSystem"; displayName = "Source System"; text = @{} }
+
+    # -- Folder-derived (populate via folder default column values) --
+    @{ name = "State"; displayName = "State"; text = @{} }
+    @{ name = "PropertyName"; displayName = "Property Name"; text = @{} }
+    @{ name = "ProjectName"; displayName = "Project Name"; text = @{} }
+
+    # -- Content: universal --
+    @{ name = "DocumentStatus"; displayName = "Document Status"; choice = @{ choices = $documentStatuses } }
+    @{ name = "Counterparty"; displayName = "Counterparty"; text = @{} }
+    @{ name = "TransactionType"; displayName = "Transaction Type"; choice = @{ choices = $transactionTypes } }
+    @{ name = "ExecutionDate"; displayName = "Execution Date"; dateTime = @{} }
+    @{ name = "EffectiveDate"; displayName = "Effective Date"; dateTime = @{} }
+    @{ name = "ExpirationDate"; displayName = "Expiration Date"; dateTime = @{} }
+
+    # -- Content: property --
+    @{ name = "PropertyAddress"; displayName = "Property Address"; text = @{} }
+    @{ name = "ParcelID"; displayName = "Parcel ID"; text = @{} }
+    @{ name = "County"; displayName = "County"; text = @{} }
+    @{ name = "CityJurisdiction"; displayName = "City / ETJ Jurisdiction"; text = @{} }
+    @{ name = "Acres"; displayName = "Acres"; number = @{} }
+    @{ name = "SquareFootage"; displayName = "Square Footage"; number = @{} }
+    @{ name = "LandUse"; displayName = "Land Use"; text = @{} }
+    @{ name = "Zoning"; displayName = "Zoning"; text = @{} }
+    @{ name = "OpportunityZone"; displayName = "Opportunity Zone"; choice = @{ choices = @("Yes","No","Unknown") } }
+
+    # -- Content: transaction (financial values stored as text — they arrive as formatted strings) --
+    @{ name = "Seller"; displayName = "Seller"; text = @{} }
+    @{ name = "Buyer"; displayName = "Buyer"; text = @{} }
+    @{ name = "Broker"; displayName = "Broker"; text = @{} }
+    @{ name = "TitleCompany"; displayName = "Title Company"; text = @{} }
+    @{ name = "ClosingDate"; displayName = "Closing Date"; dateTime = @{} }
+    @{ name = "PurchasePrice"; displayName = "Purchase Price"; text = @{} }
+    @{ name = "EarnestMoney"; displayName = "Earnest Money"; text = @{} }
+    @{ name = "DepositAmount"; displayName = "Deposit Amount"; text = @{} }
+    @{ name = "ContractValue"; displayName = "Contract Value"; text = @{} }
+
+    # -- Content: ownership --
+    @{ name = "EntityName"; displayName = "Entity Name"; text = @{} }
+    @{ name = "InvestorFund"; displayName = "Investor / Fund"; text = @{} }
+
+    # -- Type-specific (Design Drawing) --
+    @{ name = "Discipline"; displayName = "Discipline"; choice = @{ choices = $disciplines } }
 )
 
 # --- Create columns on document library ---
-Write-Host "`n=== Document Library Columns ===" -ForegroundColor Cyan
+Write-Host "`n=== Document Library Columns (v4) ===" -ForegroundColor Cyan
 
 $existingCols = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns").value
 
+$created = 0; $skipped = 0
 foreach ($col in $columns) {
     $exists = $existingCols | Where-Object { $_.name -eq $col.name }
     if ($exists) {
         Write-Host "  [EXISTS] $($col.displayName)" -ForegroundColor Yellow
+        $skipped++
         continue
     }
     if ($DryRun) {
@@ -87,151 +147,22 @@ foreach ($col in $columns) {
         -Body ($col | ConvertTo-Json -Depth 5) `
         -ContentType "application/json" | Out-Null
     Write-Host "  [CREATED] $($col.displayName)" -ForegroundColor Green
+    $created++
 }
 
 # --- Summary ---
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
-Write-Host "  Site           : $($site.displayName)"
+Write-Host "  Site            : $($site.displayName)"
 Write-Host "  Document Library: $DocumentLibraryName (listId: $docListId)"
-Write-Host "  Drive ID       : $($drive.id)"
+Write-Host "  Drive ID        : $($drive.id)"
+Write-Host "  Columns         : $($columns.Count) defined | $created created | $skipped existing"
 Write-Host ""
-Write-Host "For batch runs, pass the library URL directly:" -ForegroundColor Yellow
-Write-Host "  POST /api/batch { \`"url\`": \`"https://<tenant>.sharepoint.com/sites/<site>/$DocumentLibraryName\`" }"
-Write-Host "  DriveId (for reference): $($drive.id)"
-$existingList = $lists.value | Where-Object { $_.displayName -eq $reviewListName }
-
-if ($existingList) {
-    Write-Host "  [EXISTS] $reviewListName" -ForegroundColor Yellow
-    $reviewListId = $existingList.id
-} elseif ($DryRun) {
-    Write-Host "  [DRY RUN] Would create list: $reviewListName" -ForegroundColor DarkGray
-    $reviewListId = $null
-} else {
-    $newList = Invoke-MgGraphRequest -Method POST `
-        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists" `
-        -Body (@{
-            displayName = $reviewListName
-            list = @{ template = "genericList" }
-        } | ConvertTo-Json -Depth 5) `
-        -ContentType "application/json"
-    $reviewListId = $newList.id
-    Write-Host "  [CREATED] $reviewListName (id: $reviewListId)" -ForegroundColor Green
-}
-
-$reviewColumns = @(
-    @{ name = "DocumentLink"; displayName = "Document Link"; hyperlinkOrPicture = @{ isPicture = $false } }
-    @{ name = "DocumentId"; displayName = "Document ID"; text = @{} }
-    @{ name = "SiteId"; displayName = "Site ID"; text = @{} }
-    @{ name = "DriveId"; displayName = "Drive ID"; text = @{} }
-    @{ name = "DocumentType"; displayName = "Document Type"; choice = @{ choices = @("Lease Agreement","Offer Memorandum","Market Report","Purchase Agreement","Letter of Intent","Financial Analysis","Due Diligence","Correspondence","Presentation","Other") } }
-    @{ name = "TypeConfidence"; displayName = "Type Confidence"; number = @{} }
-    @{ name = "ProposedDealType"; displayName = "Proposed Deal Type"; choice = @{ choices = @("Lease","Sale","Development","Acquisition","Disposition","Financing","Other") } }
-    @{ name = "ProposedSubmarket"; displayName = "Proposed Submarket"; choice = @{ choices = @("Northwest Houston","North Houston","Northeast Houston","Katy/West Houston","Southwest Houston","Southeast Houston","Central Houston","Multiple","Unknown") } }
-    @{ name = "ProposedCounterparty"; displayName = "Proposed Counterparty"; text = @{} }
-    @{ name = "ProposedConfidentiality"; displayName = "Proposed Confidentiality"; choice = @{ choices = @("Public","Internal","Confidential","Highly Confidential") } }
-    @{ name = "TypeSpecificFields"; displayName = "Type Specific Fields"; text = @{ allowMultipleLines = $true } }
-    @{ name = "SuggestedFields"; displayName = "Suggested Fields"; text = @{ allowMultipleLines = $true } }
-    @{ name = "ConfidenceScores"; displayName = "Confidence Scores"; text = @{ allowMultipleLines = $true } }
-    @{ name = "LowConfidenceFields"; displayName = "Low Confidence Fields"; text = @{ allowMultipleLines = $true } }
-    @{ name = "AIReasoning"; displayName = "AI Reasoning"; text = @{ allowMultipleLines = $true } }
-    @{ name = "ReviewStatus"; displayName = "Review Status"; choice = @{ choices = @("Pending","Approved","Corrected","Rejected","Skipped") }; defaultValue = @{ value = "Pending" } }
-    @{ name = "CorrectionNotes"; displayName = "Correction Notes"; text = @{ allowMultipleLines = $true } }
-    @{ name = "BatchId"; displayName = "Batch ID"; text = @{} }
-    @{ name = "ProcessingDate"; displayName = "Processing Date"; dateTime = @{} }
-)
-
-if ($reviewListId) {
-    $existingReviewCols = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$reviewListId/columns").value
-
-    foreach ($col in $reviewColumns) {
-        $exists = $existingReviewCols | Where-Object { $_.name -eq $col.name }
-        if ($exists) {
-            Write-Host "  [EXISTS] $($col.displayName)" -ForegroundColor Yellow
-            continue
-        }
-        if ($DryRun) {
-            Write-Host "  [DRY RUN] Would create: $($col.displayName)" -ForegroundColor DarkGray
-            continue
-        }
-        Invoke-MgGraphRequest -Method POST `
-            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$reviewListId/columns" `
-            -Body ($col | ConvertTo-Json -Depth 5) `
-            -ContentType "application/json" | Out-Null
-        Write-Host "  [CREATED] $($col.displayName)" -ForegroundColor Green
-    }
-}
-
-# --- Corrections Log List ---
-Write-Host "`n=== Corrections Log List ===" -ForegroundColor Cyan
-
-$correctionsListName = "Corrections Log"
-$existingCorrections = $lists.value | Where-Object { $_.displayName -eq $correctionsListName }
-
-if ($existingCorrections) {
-    Write-Host "  [EXISTS] $correctionsListName" -ForegroundColor Yellow
-    $correctionsListId = $existingCorrections.id
-} elseif ($DryRun) {
-    Write-Host "  [DRY RUN] Would create list: $correctionsListName" -ForegroundColor DarkGray
-    $correctionsListId = $null
-} else {
-    $newList = Invoke-MgGraphRequest -Method POST `
-        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists" `
-        -Body (@{
-            displayName = $correctionsListName
-            list = @{ template = "genericList" }
-        } | ConvertTo-Json -Depth 5) `
-        -ContentType "application/json"
-    $correctionsListId = $newList.id
-    Write-Host "  [CREATED] $correctionsListName (id: $correctionsListId)" -ForegroundColor Green
-}
-
-$correctionColumns = @(
-    @{ name = "DocumentId"; displayName = "Document ID"; text = @{} }
-    @{ name = "FileName"; displayName = "File Name"; text = @{} }
-    @{ name = "CorrectionType"; displayName = "Correction Type"; choice = @{ choices = @("document_type","common_field","specific_field","suggested_field") } }
-    @{ name = "Category"; displayName = "Category"; text = @{} }
-    @{ name = "AIProposedValue"; displayName = "AI Proposed Value"; text = @{} }
-    @{ name = "CorrectedValue"; displayName = "Corrected Value"; text = @{} }
-    @{ name = "AIConfidence"; displayName = "AI Confidence"; number = @{} }
-    @{ name = "AIReasoning"; displayName = "AI Reasoning"; text = @{ allowMultipleLines = $true } }
-    @{ name = "CorrectorNotes"; displayName = "Corrector Notes"; text = @{ allowMultipleLines = $true } }
-    @{ name = "CorrectedDate"; displayName = "Corrected Date"; dateTime = @{} }
-    @{ name = "PromptTuningIteration"; displayName = "Prompt Tuning Iteration"; number = @{} }
-)
-
-if ($correctionsListId) {
-    $existingCorrCols = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$correctionsListId/columns").value
-
-    foreach ($col in $correctionColumns) {
-        $exists = $existingCorrCols | Where-Object { $_.name -eq $col.name }
-        if ($exists) {
-            Write-Host "  [EXISTS] $($col.displayName)" -ForegroundColor Yellow
-            continue
-        }
-        if ($DryRun) {
-            Write-Host "  [DRY RUN] Would create: $($col.displayName)" -ForegroundColor DarkGray
-            continue
-        }
-        Invoke-MgGraphRequest -Method POST `
-            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$correctionsListId/columns" `
-            -Body ($col | ConvertTo-Json -Depth 5) `
-            -ContentType "application/json" | Out-Null
-        Write-Host "  [CREATED] $($col.displayName)" -ForegroundColor Green
-    }
-}
-
-# --- Summary ---
-Write-Host "`n=== Summary ===" -ForegroundColor Cyan
-Write-Host "  Site           : $($site.displayName)"
-Write-Host "  Document Library: $DocumentLibraryName (listId: $docListId)"
-Write-Host "  Drive ID       : $($drive.id)"
-Write-Host "  Review List    : $reviewListId"
-Write-Host "  Corrections List: $correctionsListId"
+Write-Host "Next steps:" -ForegroundColor Yellow
+Write-Host "  1. Folder-derived columns (State, PropertyName, ProjectName) should be populated via"
+Write-Host "     per-folder DEFAULT COLUMN VALUES (Set-PnPDefaultColumnValues), not by the pipeline."
+Write-Host "  2. Create a filtered library view 'Needs Review' on AIProcessingStatus = 'Under Review' (ADR-006)."
+Write-Host "  3. Map columns to managed properties in the search schema for Copilot grounding (tenant admin)."
 Write-Host ""
-Write-Host "Add these to local.settings.json:" -ForegroundColor Yellow
-Write-Host "  SharePointReviewListSiteId = $siteId"
-Write-Host "  SharePointReviewListId     = $reviewListId"
-Write-Host ""
-Write-Host "For batch runs, pass the library URL directly:" -ForegroundColor Yellow
-Write-Host "  POST /api/batch { \"url\": \"https://<tenant>.sharepoint.com/sites/<site>/$DocumentLibraryName\" }"
+Write-Host "For batch runs, pass the library or folder URL directly:" -ForegroundColor Yellow
+Write-Host "  POST /api/batch { `"url`": `"https://<tenant>.sharepoint.com/sites/<site>/$DocumentLibraryName`" }"
 Write-Host "  DriveId (for reference): $($drive.id)"
