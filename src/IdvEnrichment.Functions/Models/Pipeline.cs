@@ -81,6 +81,7 @@ public sealed record EnrichmentResult(
     [property: JsonPropertyName("processingMetrics")] ProcessingMetrics ProcessingMetrics,
     [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
     [property: JsonPropertyName("lowConfidenceCategories")] IReadOnlyList<string> LowConfidenceCategories,
+    [property: JsonPropertyName("drawingClassification")] DrawingClassification? DrawingClassification = null,
     [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded = true);
 
 public sealed record ProcessingMetrics(
@@ -119,7 +120,8 @@ public sealed record RouteResultInput(
     [property: JsonPropertyName("message")] QueueMessage Message,
     [property: JsonPropertyName("typeClassification")] TypeClassificationResult TypeClassification,
     [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
-    [property: JsonPropertyName("extraction")] ExtractionResult Extraction);
+    [property: JsonPropertyName("extraction")] ExtractionResult Extraction,
+    [property: JsonPropertyName("drawingClassification")] DrawingClassification? DrawingClassification = null);
 
 public sealed record FilterProcessedInput(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
@@ -130,6 +132,10 @@ public sealed record ChunkRequest(
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
     [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency);
+
+public sealed record ExtractDrawingDetailsInput(
+    [property: JsonPropertyName("documentUrl")] string DocumentUrl,
+    [property: JsonPropertyName("fileName")] string FileName);
 
 public sealed record WriteMetadataInput(
     [property: JsonPropertyName("siteId")] string SiteId,

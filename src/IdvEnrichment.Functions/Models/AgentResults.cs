@@ -29,3 +29,14 @@ public sealed record MetadataExtractionResult(
     [property: JsonPropertyName("inputTokens")] int InputTokens = 0,
     [property: JsonPropertyName("outputTokens")] int OutputTokens = 0,
     [property: JsonPropertyName("durationMs")] int DurationMs = 0);
+
+/// <summary>Vision-based classification of a design drawing's first page.</summary>
+public sealed record DrawingClassification(
+    [property: JsonPropertyName("discipline")] string Discipline,
+    [property: JsonPropertyName("sheetNumber")] string SheetNumber,
+    [property: JsonPropertyName("drawingTitle")] string DrawingTitle,
+    [property: JsonPropertyName("confidence")] double Confidence,
+    [property: JsonPropertyName("reasoning")] string Reasoning,
+    [property: JsonPropertyName("inputTokens")] int InputTokens = 0,
+    [property: JsonPropertyName("outputTokens")] int OutputTokens = 0,
+    [property: JsonPropertyName("durationMs")] int DurationMs = 0);

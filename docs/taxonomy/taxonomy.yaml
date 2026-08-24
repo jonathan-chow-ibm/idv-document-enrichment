@@ -74,6 +74,10 @@ document_types:
       - name: discipline
         description: "Drawing discipline"
         allowed_values: ["Architectural", "Civil", "Landscape", "Structural", "Mechanical", "Electrical", "Plumbing"]
+      - name: sheetNumber
+        description: "Sheet number from the title block (e.g., A1.01, C-100, S-201)"
+      - name: drawingTitle
+        description: "Drawing title from the title block (e.g., First Floor Plan, Grading Plan)"
 
   # --- Reports (PDF) ---
   - label: "Closing Statement"
