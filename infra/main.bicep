@@ -21,8 +21,8 @@ param openAiModelVersion string = '2024-08-06'
 @description('Azure OpenAI GPT-4o TPM capacity (in thousands)')
 param openAiCapacity int = 60
 
-@description('Azure OpenAI GPT-4o-mini deployment name (Agent 1: classification)')
-param openAiMiniDeploymentName string = 'gpt-4o-mini'
+@description('Azure OpenAI GPT-4.1-mini deployment name (Agent 1: classification)')
+param openAiMiniDeploymentName string = 'gpt-4.1-mini'
 
 @description('Azure OpenAI GPT-4o-mini TPM capacity (in thousands)')
 param openAiMiniCapacity int = 60
@@ -138,14 +138,14 @@ resource openAiMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@
   name: openAiMiniDeploymentName
   dependsOn: [openAiDeployment]
   sku: {
-    name: 'GlobalStandard'
+    name: 'Standard'
     capacity: openAiMiniCapacity
   }
   properties: {
     model: {
       format: 'OpenAI'
-      name: 'gpt-4o'
-      version: '2024-11-20'
+      name: 'gpt-4.1-mini'
+      version: '2025-04-14'
     }
   }
 }

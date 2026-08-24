@@ -12,8 +12,8 @@ public sealed class PipelineSettings
 
     public string OpenAiDeployment { get; init; } = "gpt-4o";
 
-    // gpt-4o-mini unavailable in East US; override via app settings to match the actual deployment name
-    public string OpenAiMiniDeployment { get; init; } = "gpt-4o-mini";
+    // Agent 1 (classification) — gpt-4.1-mini is cheaper and supports structured outputs
+    public string OpenAiMiniDeployment { get; init; } = "gpt-4.1-mini";
 
     [Required]
     [Url]
