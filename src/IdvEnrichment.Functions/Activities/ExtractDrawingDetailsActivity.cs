@@ -38,7 +38,6 @@ public sealed class ExtractDrawingDetailsActivity(
             return new DrawingClassification("", "", "", 0, "PDF rendering failed");
         }
 
-        var dataUrl = $"data:image/png;base64,{Convert.ToBase64String(pngBytes)}";
         var systemPrompt = PromptRenderer.RenderClassifyDrawing();
 
         var messages = new ChatMessage[]
@@ -46,7 +45,7 @@ public sealed class ExtractDrawingDetailsActivity(
             new SystemChatMessage(systemPrompt),
             new UserChatMessage(
                 ChatMessageContentPart.CreateTextPart($"Drawing file: {input.FileName}"),
-                ChatMessageContentPart.CreateImagePart(new Uri(dataUrl))),
+                ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(pngBytes), "image/png")),
         };
 
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiMiniDeployment);
@@ -60,6 +59,25 @@ public sealed class ExtractDrawingDetailsActivity(
                 },
                 ct),
             logger, ct);
+
+        if (completion.Value.Content.Count == 0)
+        {
+            var reason = completion.Value.FinishReason;
+            if (reason == ChatFinishReason.ContentFilter)
+            {
+                logger.LogWarning("Vision content filter triggered for {FileName}", input.FileName);
+            }
+            else if (reason == ChatFinishReason.Length)
+            {
+                logger.LogWarning("Vision response truncated for {FileName}", input.FileName);
+            }
+            else
+            {
+                logger.LogWarning("Vision returned empty content for {FileName}", input.FileName);
+            }
+
+            return new DrawingClassification("", "", "", 0.0, "Vision call returned no content");
+        }
 
         var rawJson = completion.Value.Content[0].Text;
         var result = JsonSerializer.Deserialize<DrawingClassification>(rawJson)

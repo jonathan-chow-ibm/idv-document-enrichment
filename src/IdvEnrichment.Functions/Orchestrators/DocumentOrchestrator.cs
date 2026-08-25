@@ -70,8 +70,9 @@ public sealed class DocumentOrchestrator
             DrawingClassification? drawingClassification = null;
             var shouldClassifyDrawing =
                 typeClassification.DocumentType == DocumentType.DesignDrawing
-                || (extraction.TextLength < 500 && message.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                || (message.FileName.Contains("/04-", StringComparison.OrdinalIgnoreCase));
+                || (extraction.TextLength < 500
+                    && message.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                    && typeClassification.DocumentType == DocumentType.Other);
 
             if (shouldClassifyDrawing)
             {
@@ -82,7 +83,7 @@ public sealed class DocumentOrchestrator
                         new ExtractDrawingDetailsInput(downloadUrl, message.FileName),
                         retry);
 
-                    if (typeClassification.DocumentType != DocumentType.DesignDrawing
+                    if (typeClassification.DocumentType == DocumentType.Other
                         && drawingClassification.Confidence > 0.7
                         && !string.IsNullOrEmpty(drawingClassification.Discipline))
                     {

@@ -55,7 +55,7 @@ public sealed class WriteMetadataActivity(GraphServiceClient graphClient, Taxono
         {
             if (!string.IsNullOrWhiteSpace(drawing.Discipline))
             {
-                data["DrawingDiscipline"] = drawing.Discipline;
+                data["Discipline"] = drawing.Discipline;
             }
 
             if (!string.IsNullOrWhiteSpace(drawing.SheetNumber))
