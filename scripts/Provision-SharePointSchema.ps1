@@ -123,6 +123,8 @@ $columns = @(
 
     # -- Type-specific (Design Drawing) --
     @{ name = "Discipline"; displayName = "Discipline"; choice = @{ choices = $disciplines } }
+    @{ name = "SheetNumber"; displayName = "Sheet Number"; text = @{} }
+    @{ name = "DrawingTitle"; displayName = "Drawing Title"; text = @{} }
 )
 
 # --- Create columns on document library ---
