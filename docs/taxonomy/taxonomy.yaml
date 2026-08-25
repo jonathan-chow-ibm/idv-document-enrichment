@@ -63,13 +63,13 @@ document_types:
   # --- Drawing Files (PDF; some CAD) ---
   - label: "Survey"
     group: "Drawing Files"
-    description: "ALTA, boundary, or topographic survey"
+    description: "Boundary survey, ALTA survey, or topographic survey produced by a licensed surveyor for legal or title purposes. Construction drawings produced by architects are NOT surveys."
   - label: "Plat"
     group: "Drawing Files"
-    description: "Recorded or preliminary plat"
+    description: "Officially recorded subdivision plat or replat filed with the county clerk. Must be a recorded legal instrument (has county recording number or cabinet/slide reference). Site plans and construction drawings are NOT plats."
   - label: "Design Drawing"
     group: "Drawing Files"
-    description: "Design/construction drawing set. Classify-only for image/CAD files — capture type + discipline, not deep fields."
+    description: "Architectural, civil, structural, or MEP drawing produced by an architect or engineer — includes site plans, floor plans, elevations, sections, grading plans, permit sets, and construction documents. A drawing produced by an A/E firm is always DesignDrawing regardless of how much text it contains."
 
   # --- Reports (PDF) ---
   - label: "Closing Statement"
