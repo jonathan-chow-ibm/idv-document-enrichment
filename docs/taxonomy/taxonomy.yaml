@@ -169,15 +169,6 @@ metadata:
           - "Construction Contract"
         decision_rules:
           - "Use the numbered project subfolder as a prior (03-Acq→Acquisition, 06-Dispo→Disposition, 04-Des & Const→Construction Contract); override only if document content clearly disagrees"
-      - field_name: executionDate
-        sharepoint_column: "ExecutionDate"
-        description: "Date the document was executed/signed"
-      - field_name: effectiveDate
-        sharepoint_column: "EffectiveDate"
-        description: "Effective date"
-      - field_name: expirationDate
-        sharepoint_column: "ExpirationDate"
-        description: "Expiration date (if applicable)"
 
     # Property — populate mainly from title, survey, plat, ESA; sparse on other types.
     property:
@@ -218,6 +209,15 @@ metadata:
 
     # Transaction — populate on transaction docs (PSA, lease, loan, closing); sparse elsewhere.
     transaction:
+      - field_name: executionDate
+        sharepoint_column: "ExecutionDate"
+        description: "Date the document was executed/signed"
+      - field_name: effectiveDate
+        sharepoint_column: "EffectiveDate"
+        description: "Effective date"
+      - field_name: expirationDate
+        sharepoint_column: "ExpirationDate"
+        description: "Expiration date (if applicable)"
       - field_name: seller
         sharepoint_column: "Seller"
         description: "Seller / grantor entity"
