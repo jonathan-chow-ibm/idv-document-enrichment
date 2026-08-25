@@ -278,7 +278,7 @@ confidence_thresholds:
     counterparty: 0.70
     transactionType: 0.75
     opportunityZone: 0.50
-    default: 0.80
+    default: 0.75
 
 # ---------------------------------------------------------------------------
 # CHANGES FROM v3 (for reviewers)
