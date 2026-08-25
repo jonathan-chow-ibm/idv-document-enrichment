@@ -14,9 +14,10 @@ The drawing title is the sheet's own heading describing what is shown — typica
 ## Instructions
 
 - Focus on the title block (typically bottom-right corner of the drawing).
-- If the image shows a cover sheet or index, classify the discipline based on the project type visible.
-- For discipline, consider the sheet number prefix as a strong signal: A=Architectural, C=Civil, S=Structural, M=Mechanical, E=Electrical, P=Plumbing, L=Landscape.
-- If no sheet number is visible, infer discipline from the preparing firm named in the title block or copyright notice: an architecture firm (any firm with "Architecture", "Architects", "Architectural" in its name) = Architectural; a civil/structural/MEP engineering firm = the relevant discipline. Do NOT infer discipline from the drawing content (easements, parking, utilities can appear on both architectural and civil drawings).
+- For discipline, use this priority order:
+  1. **Sheet number prefix** (strongest signal): A=Architectural, C=Civil, S=Structural, M=Mechanical, E=Electrical, P=Plumbing, L=Landscape
+  2. **Preparing firm** (when no sheet number): a firm with "Architecture/Architects/Architectural" in its name = Architectural; a civil/structural/MEP firm = relevant discipline. Do NOT infer discipline from drawing content — easements, parking, and utilities appear on both architectural and civil drawings.
+  3. **Cover sheets and indexes only** (when neither signal is available): infer from the dominant project type shown.
 - Provide a confidence score (0.0–1.0) and a one-sentence reasoning.
 
 ## Output Format
