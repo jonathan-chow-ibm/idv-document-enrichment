@@ -277,6 +277,7 @@ confidence_thresholds:
     documentStatus: 0.75
     counterparty: 0.70
     transactionType: 0.75
+    opportunityZone: 0.50
     default: 0.80
 
 # ---------------------------------------------------------------------------
