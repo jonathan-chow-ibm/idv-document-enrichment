@@ -10,12 +10,14 @@ public static class PromptRenderer
     private static readonly HandlebarsTemplate<object, object> _classifyType;
     private static readonly HandlebarsTemplate<object, object> _userDocument;
     private static readonly HandlebarsTemplate<object, object> _extractMetadata;
+    private static readonly HandlebarsTemplate<object, object> _classifyDrawing;
 
     static PromptRenderer()
     {
         _classifyType = Handlebars.Compile(LoadTemplate("ClassifyType"));
         _userDocument = Handlebars.Compile(LoadTemplate("UserDocument"));
         _extractMetadata = Handlebars.Compile(LoadTemplate("ExtractMetadata"));
+        _classifyDrawing = Handlebars.Compile(LoadTemplate("ClassifyDrawing"));
     }
 
     public static string RenderClassifyType(IReadOnlyList<DocumentTypeDefinition> types)
@@ -44,6 +46,8 @@ public static class PromptRenderer
             specificFields = docTypeDef?.SpecificFields ?? [],
         });
     }
+
+    public static string RenderClassifyDrawing() => _classifyDrawing(new { });
 
     private static string LoadTemplate(string name)
     {
