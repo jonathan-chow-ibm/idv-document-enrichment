@@ -70,7 +70,9 @@ public sealed class ChunkOrchestrator
                 result.ProcessingMetrics.ClassificationInputTokens,
                 result.ProcessingMetrics.ClassificationOutputTokens,
                 result.ProcessingMetrics.ExtractionInputTokens,
-                result.ProcessingMetrics.ExtractionOutputTokens), true);
+                result.ProcessingMetrics.ExtractionOutputTokens,
+                result.ProcessingMetrics.VisionInputTokens,
+                result.ProcessingMetrics.VisionOutputTokens), true);
         }
         catch (OperationCanceledException)
         {

@@ -37,7 +37,9 @@ public sealed class RouteResultActivity(
                 ClassificationInputTokens: input.TypeClassification.InputTokens,
                 ClassificationOutputTokens: input.TypeClassification.OutputTokens,
                 ExtractionInputTokens: input.Metadata?.InputTokens ?? 0,
-                ExtractionOutputTokens: input.Metadata?.OutputTokens ?? 0),
+                ExtractionOutputTokens: input.Metadata?.OutputTokens ?? 0,
+                VisionInputTokens: input.DrawingClassification?.InputTokens ?? 0,
+                VisionOutputTokens: input.DrawingClassification?.OutputTokens ?? 0),
             RoutingDecision: decision,
             LowConfidenceCategories: lowConfidenceCategories,
             DrawingClassification: input.DrawingClassification);

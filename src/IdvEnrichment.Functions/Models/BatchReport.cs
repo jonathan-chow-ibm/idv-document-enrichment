@@ -11,7 +11,9 @@ public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("classificationInputTokens")] int ClassificationInputTokens = 0,
     [property: JsonPropertyName("classificationOutputTokens")] int ClassificationOutputTokens = 0,
     [property: JsonPropertyName("extractionInputTokens")] int ExtractionInputTokens = 0,
-    [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0);
+    [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0,
+    [property: JsonPropertyName("visionInputTokens")] int VisionInputTokens = 0,
+    [property: JsonPropertyName("visionOutputTokens")] int VisionOutputTokens = 0);
 
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
@@ -51,6 +53,7 @@ public sealed record BatchCost(
     [property: JsonPropertyName("documentIntelligence")] decimal DocumentIntelligence,
     [property: JsonPropertyName("classificationTokens")] TokenUsage ClassificationTokens,
     [property: JsonPropertyName("extractionTokens")] TokenUsage ExtractionTokens,
+    [property: JsonPropertyName("visionTokens")] TokenUsage VisionTokens,
     [property: JsonPropertyName("estimatedTotalUsd")] decimal EstimatedTotalUsd);
 
 public sealed record TokenUsage(

@@ -36,6 +36,8 @@ public sealed class GenerateBatchReportActivity(
         var classificationOutputTokens = input.Results.Sum(r => (long)r.ClassificationOutputTokens);
         var extractionInputTokens = input.Results.Sum(r => (long)r.ExtractionInputTokens);
         var extractionOutputTokens = input.Results.Sum(r => (long)r.ExtractionOutputTokens);
+        var visionInputTokens = input.Results.Sum(r => (long)r.VisionInputTokens);
+        var visionOutputTokens = input.Results.Sum(r => (long)r.VisionOutputTokens);
 
         var report = new BatchReport(
             BatchId: input.BatchId,
@@ -55,6 +57,7 @@ public sealed class GenerateBatchReportActivity(
                 DocumentIntelligence: 0m,
                 ClassificationTokens: new TokenUsage(classificationInputTokens, classificationOutputTokens),
                 ExtractionTokens: new TokenUsage(extractionInputTokens, extractionOutputTokens),
+                VisionTokens: new TokenUsage(visionInputTokens, visionOutputTokens),
                 EstimatedTotalUsd: 0m));
 
         if (reportContainer is not null)
