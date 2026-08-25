@@ -15,6 +15,7 @@ public sealed class DocumentTypeDefinition
     public string Label { get; set; } = string.Empty;
     public string Group { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public List<string> DecisionRules { get; set; } = [];
     public List<FieldDefinition> SpecificFields { get; set; } = [];
 }
 

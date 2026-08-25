@@ -64,12 +64,22 @@ document_types:
   - label: "Survey"
     group: "Drawing Files"
     description: "Boundary survey, ALTA survey, or topographic survey produced by a licensed surveyor for legal or title purposes. Construction drawings produced by architects are NOT surveys."
+    decision_rules:
+      - "Must be produced by a licensed surveyor (RPLS seal) for legal or title purposes"
+      - "Architectural or civil drawings are NOT surveys even if they show boundary lines"
   - label: "Plat"
     group: "Drawing Files"
     description: "Officially recorded subdivision plat or replat filed with the county clerk. Must be a recorded legal instrument (has county recording number or cabinet/slide reference). Site plans and construction drawings are NOT plats."
+    decision_rules:
+      - "Must be a recorded legal instrument — look for county recording references (CAB., SL., INST. NO.) as proof of recording"
+      - "Site plans and construction drawings by architects are NOT plats even if they show lot lines"
   - label: "Design Drawing"
     group: "Drawing Files"
     description: "Architectural, civil, structural, or MEP drawing produced by an architect or engineer — includes site plans, floor plans, elevations, sections, grading plans, permit sets, and construction documents. A drawing produced by an A/E firm is always DesignDrawing regardless of how much text it contains."
+    decision_rules:
+      - "Any document produced by an architect or engineer (A/E firm) is DesignDrawing — regardless of how much text it contains"
+      - "Site plans, floor plans, permit sets, grading plans, elevations = DesignDrawing"
+      - "A Plat is a recorded county instrument with a cabinet/slide or recording number — not a design drawing"
 
   # --- Reports (PDF) ---
   - label: "Closing Statement"

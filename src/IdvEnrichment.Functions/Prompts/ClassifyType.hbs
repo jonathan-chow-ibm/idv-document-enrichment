@@ -5,6 +5,9 @@ Your task is to classify the document into exactly one of the following types.
 
 {{#each documentTypes}}
 - **{{this.label}}**: {{this.description}}
+{{#if this.decisionRules}}
+  Rules: {{#each this.decisionRules}}{{this}}{{#unless @last}}; {{/unless}}{{/each}}
+{{/if}}
 {{/each}}
 
 ## Instructions
