@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Docnet.Core" Version="2.6.0" />
 
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
@@ -34,6 +35,10 @@
     <PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.22.2" />
 
     <PackageReference Include="Handlebars.Net" Version="2.4.3" />
+
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />
     <PackageReference Include="YamlDotNet" Version="16.2.0" />
     <PackageReference Include="ClosedXML" Version="0.104.2" />
   </ItemGroup>
