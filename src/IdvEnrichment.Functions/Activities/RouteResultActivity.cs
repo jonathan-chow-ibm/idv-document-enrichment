@@ -32,7 +32,8 @@ public sealed class RouteResultActivity(
                 MetadataExtractionDurationMs: input.Metadata?.DurationMs ?? 0,
                 TotalDurationMs: input.Extraction.DurationMs
                     + input.TypeClassification.DurationMs
-                    + (input.Metadata?.DurationMs ?? 0),
+                    + (input.Metadata?.DurationMs ?? 0)
+                    + (input.DrawingClassification?.DurationMs ?? 0),
                 ClassificationInputTokens: input.TypeClassification.InputTokens,
                 ClassificationOutputTokens: input.TypeClassification.OutputTokens,
                 ExtractionInputTokens: input.Metadata?.InputTokens ?? 0,
