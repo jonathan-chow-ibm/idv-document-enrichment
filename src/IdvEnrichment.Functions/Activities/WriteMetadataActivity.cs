@@ -51,6 +51,24 @@ public sealed class WriteMetadataActivity(GraphServiceClient graphClient, Taxono
             data["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata });
         }
 
+        if (result.DrawingClassification is { } drawing)
+        {
+            if (!string.IsNullOrWhiteSpace(drawing.Discipline))
+            {
+                data["DrawingDiscipline"] = drawing.Discipline;
+            }
+
+            if (!string.IsNullOrWhiteSpace(drawing.SheetNumber))
+            {
+                data["SheetNumber"] = drawing.SheetNumber;
+            }
+
+            if (!string.IsNullOrWhiteSpace(drawing.DrawingTitle))
+            {
+                data["DrawingTitle"] = drawing.DrawingTitle;
+            }
+        }
+
         var fields = new FieldValueSet { AdditionalData = data };
 
         // Graph SDK v5 does not expose the Fields sub-path via Drives.Items.ListItem;
