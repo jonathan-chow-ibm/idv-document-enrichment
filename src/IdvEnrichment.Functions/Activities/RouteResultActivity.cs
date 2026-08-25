@@ -35,7 +35,8 @@ public sealed class RouteResultActivity(
                 ExtractionInputTokens: input.Metadata?.InputTokens ?? 0,
                 ExtractionOutputTokens: input.Metadata?.OutputTokens ?? 0),
             RoutingDecision: decision,
-            LowConfidenceCategories: lowConfidenceCategories);
+            LowConfidenceCategories: lowConfidenceCategories,
+            DrawingClassification: input.DrawingClassification);
 
         TrackEnrichmentEvent(input, result);
 

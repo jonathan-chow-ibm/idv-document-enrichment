@@ -67,6 +67,40 @@ public sealed class DocumentOrchestrator
             var skipExtraction = typeClassification.Confidence < typeThreshold
                 || typeClassification.DocumentType == DocumentType.Other;
 
+            DrawingClassification? drawingClassification = null;
+            var shouldClassifyDrawing =
+                typeClassification.DocumentType == DocumentType.DesignDrawing
+                || (extraction.TextLength < 500 && message.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                || (message.FileName.Contains("/04-", StringComparison.OrdinalIgnoreCase));
+
+            if (shouldClassifyDrawing)
+            {
+                try
+                {
+                    drawingClassification = await ctx.CallActivityAsync<DrawingClassification>(
+                        "ExtractDrawingDetails",
+                        new ExtractDrawingDetailsInput(downloadUrl, message.FileName),
+                        retry);
+
+                    if (typeClassification.DocumentType != DocumentType.DesignDrawing
+                        && drawingClassification.Confidence > 0.7
+                        && !string.IsNullOrEmpty(drawingClassification.Discipline))
+                    {
+                        typeClassification = new TypeClassificationResult(
+                            DocumentType.DesignDrawing,
+                            drawingClassification.Confidence,
+                            $"Vision override: {drawingClassification.Reasoning}",
+                            typeClassification.InputTokens,
+                            typeClassification.OutputTokens,
+                            typeClassification.DurationMs);
+                    }
+                }
+                catch (TaskFailedException ex)
+                {
+                    log.LogWarning(ex, "DrawingDetails failed for {DocumentId} — continuing without vision enrichment", message.DocumentId);
+                }
+            }
+
             MetadataExtractionResult? metadata = null;
             if (!skipExtraction)
             {
@@ -82,7 +116,7 @@ public sealed class DocumentOrchestrator
 
             var enrichmentResult = await ctx.CallActivityAsync<EnrichmentResult>(
                 "RouteResult",
-                new RouteResultInput(message, typeClassification, metadata, extraction),
+                new RouteResultInput(message, typeClassification, metadata, extraction, drawingClassification),
                 retry);
 
             try
