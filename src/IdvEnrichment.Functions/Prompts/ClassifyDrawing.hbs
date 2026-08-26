@@ -10,13 +10,14 @@ The sheet number from the title block (e.g., "A1.01", "C-100", "S-201", "L-1"). 
 
 ### drawingTitle
 The drawing title is the sheet's own heading describing what is shown — typically the largest text on the sheet (e.g., "OVERALL SITE PLAN", "FIRST FLOOR PLAN", "GRADING PLAN"). Do NOT use the project name, client name, street address, or city name as the drawing title. If the heading says "OVERALL SITE PLAN - OPTION 01", that is the drawing title. Use an empty string if not visible.
+The drawing title is the sheet's own heading — look for it as the first or largest heading in the OCR text (e.g., "# OVERALL SITE PLAN- OPTION 01" in markdown means the drawing title is "OVERALL SITE PLAN- OPTION 01"). Do NOT use the project name, client name, street address, or city name.
 
 ## Instructions
 
 - Focus on the title block (typically bottom-right corner of the drawing).
 - For discipline, use this priority order:
   1. **Sheet number prefix** (strongest signal): A=Architectural, C=Civil, S=Structural, M=Mechanical, E=Electrical, P=Plumbing, L=Landscape
-  2. **Preparing firm** (when no sheet number): a firm with "Architecture/Architects/Architectural" in its name = Architectural; a civil/structural/MEP firm = relevant discipline. Do NOT infer discipline from drawing content — easements, parking, and utilities appear on both architectural and civil drawings.
+  2. **Preparing firm in OCR text** (when no sheet number): look in the copyright notice or title block text for the firm name. A firm with "Architecture/Architects/Architectural" in its name = Architectural; a civil/structural/MEP firm = relevant discipline. The OCR text will contain the firm name exactly as printed.
   3. **Cover sheets and indexes only** (when neither signal is available): infer from the dominant project type shown.
 - Provide a confidence score (0.0–1.0) and a one-sentence reasoning.
 

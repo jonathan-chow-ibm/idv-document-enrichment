@@ -82,7 +82,7 @@ public sealed class DocumentOrchestrator
                 {
                     drawingClassification = await ctx.CallActivityAsync<DrawingClassification>(
                         "ExtractDrawingDetails",
-                        new ExtractDrawingDetailsInput(downloadUrl, message.FileName),
+                        new ExtractDrawingDetailsInput(downloadUrl, message.FileName, extraction.Text),
                         retry);
 
                     if ((typeClassification.DocumentType == DocumentType.Other

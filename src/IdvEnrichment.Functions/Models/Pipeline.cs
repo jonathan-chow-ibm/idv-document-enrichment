@@ -137,7 +137,8 @@ public sealed record ChunkRequest(
 
 public sealed record ExtractDrawingDetailsInput(
     [property: JsonPropertyName("documentUrl")] string DocumentUrl,
-    [property: JsonPropertyName("fileName")] string FileName);
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("extractedText")] string ExtractedText = "");
 
 public sealed record WriteMetadataInput(
     [property: JsonPropertyName("siteId")] string SiteId,

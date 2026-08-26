@@ -40,12 +40,21 @@ public sealed class ExtractDrawingDetailsActivity(
 
         var systemPrompt = PromptRenderer.RenderClassifyDrawing();
 
+        var contentParts = new List<ChatMessageContentPart>
+        {
+            ChatMessageContentPart.CreateTextPart(
+                $"Drawing file: {input.FileName}\n\n" +
+                (string.IsNullOrWhiteSpace(input.ExtractedText)
+                    ? "No OCR text available."
+                    : $"OCR-extracted text from this drawing:\n{TextUtils.TruncateForClassification(input.ExtractedText, 2000)}\n\nUse the OCR text for exact strings (firm names, titles, sheet numbers). Use the image for layout context.")),
+            ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(pngBytes), "image/png"),
+        };
+        var userMessage = new UserChatMessage(contentParts);
+
         var messages = new ChatMessage[]
         {
             new SystemChatMessage(systemPrompt),
-            new UserChatMessage(
-                ChatMessageContentPart.CreateTextPart($"Drawing file: {input.FileName}"),
-                ChatMessageContentPart.CreateImagePart(BinaryData.FromBytes(pngBytes), "image/png")),
+            userMessage,
         };
 
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiMiniDeployment);
