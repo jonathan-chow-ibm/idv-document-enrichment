@@ -102,15 +102,32 @@ if ($existing) {
     Write-Host "  Granted: $roleName" -ForegroundColor Green
 }
 
-# --- Step 4: Admin consent reminder ---
-Write-Host "`n=== Step 4: Admin Consent ===" -ForegroundColor Cyan
-Write-Host "  A Cloud Application Administrator or Global Admin must consent to the permission."
-Write-Host "  Go to: Entra ID -> Enterprise Applications -> '$FunctionAppName' -> Permissions -> Grant admin consent"
+# Grant Files.ReadWrite.All (required for @microsoft.graph.downloadUrl on DriveItems)
+$filesRole = $graphSp.AppRoles | Where-Object { $_.Value -eq "Files.ReadWrite.All" }
+$existingFiles = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $miObjectId |
+    Where-Object { $_.AppRoleId -eq $filesRole.Id }
+
+if ($existingFiles) {
+    Write-Host "  Files.ReadWrite.All is already assigned. Skipping." -ForegroundColor Yellow
+} else {
+    New-MgServicePrincipalAppRoleAssignment `
+        -ServicePrincipalId $miObjectId `
+        -PrincipalId $miObjectId `
+        -ResourceId $graphSp.Id `
+        -AppRoleId $filesRole.Id | Out-Null
+    Write-Host "  Granted: Files.ReadWrite.All" -ForegroundColor Green
+}
+
+# --- Step 4: Verify permissions ---
+Write-Host "`n=== Step 4: Verify permissions ===" -ForegroundColor Cyan
+Write-Host "  Permissions have been granted. To verify, go to:"
+Write-Host "  Entra ID -> Enterprise Applications -> '$FunctionAppName' -> Permissions"
+Write-Host "  The granted permissions should appear under 'Application permissions'."
 Write-Host ""
 
 if ($Approach -eq "FullAccess") {
     Write-Host "=== Setup complete (FullAccess) ===" -ForegroundColor Green
-    Write-Host "  After admin consent, the Function App can read/write any SharePoint site."
+    Write-Host "  The Function App can read/write any SharePoint site."
     Write-Host "  No further permission steps needed."
     return
 }
@@ -138,7 +155,7 @@ if ($alreadyGranted) {
 } else {
     $body = @{
         roles = @("write")
-        grantedToIdentities = @(
+        grantedToIdentitiesV2 = @(
             @{
                 application = @{
                     id = $miAppId
@@ -170,9 +187,9 @@ try {
     }
 } catch {
     Write-Host "  Could not list drives: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "  This may be expected if admin consent hasn't been completed yet."
+    Write-Host "  This may be expected if permissions have not yet propagated."
 }
 
 Write-Host "`n=== Setup complete (SiteSelected) ===" -ForegroundColor Green
-Write-Host "  After admin consent, the Function App can read/write the granted site."
+Write-Host "  The Function App can read/write the granted site."
 Write-Host "  To add another site, re-run with a different -SiteUrl."
