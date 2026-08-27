@@ -215,6 +215,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'OpenAiDeployment', value: openAiDeploymentName }
         { name: 'OpenAiMiniDeployment', value: openAiMiniDeploymentName }
         { name: 'DocIntelligenceEndpoint', value: docIntelligence.properties.endpoint }
+        { name: 'TaxonomyBlobUrl', value: '${storageAccount.properties.primaryEndpoints.blob}config/taxonomy.yaml' }
+        { name: 'BatchReportsContainerUrl', value: '${storageAccount.properties.primaryEndpoints.blob}batch-reports' }
       ]
     }
   }
