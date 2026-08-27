@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Grants Microsoft Graph API permissions to the Function App's Managed Identity
-    for SharePoint access. Run after deploying the Bicep infrastructure.
+    Grants Sites.ReadWrite.All to the Function App's Managed Identity for SharePoint access.
+    Run after deploying the Bicep infrastructure.
 
 .DESCRIPTION
-    Supports two approaches:
-      -FullAccess    → Sites.ReadWrite.All (all sites, simpler setup)
-      -SiteSelected  → Sites.Selected (one site, requires site-level grant)
+    Grants the Sites.ReadWrite.All application permission to the system-assigned Managed
+    Identity of the specified Azure Function App. This allows the Function App to read
+    and write any SharePoint site in the tenant.
 
     PREREQUISITES:
       1. Azure CLI installed and authenticated: az login
@@ -23,19 +23,12 @@
 .PARAMETER ResourceGroupName
     Resource group containing the Function App.
 
-.PARAMETER Approach
-    "FullAccess" or "SiteSelected".
-
-.PARAMETER SiteUrl
-    SharePoint site URL (required for SiteSelected approach).
-    Example: "contoso.sharepoint.com:/sites/ActiveProjects"
+.PARAMETER Force
+    Skip the confirmation prompt.
 
 .EXAMPLE
-    # Full access (all SharePoint sites)
-    .\Grant-GraphPermissions.ps1 -FunctionAppName func-idv-enrich-dev -ResourceGroupName rg-idv-enrichment -Approach FullAccess
-
-    # Scoped to one site
-    .\Grant-GraphPermissions.ps1 -FunctionAppName func-idv-enrich-dev -ResourceGroupName rg-idv-enrichment -Approach SiteSelected -SiteUrl "contoso.sharepoint.com:/sites/ActiveProjects"
+    .\Grant-GraphPermissions.ps1 -FunctionAppName func-idv-doc-enrich-dev -ResourceGroupName rg-idv-enrichment
+    .\Grant-GraphPermissions.ps1 -FunctionAppName func-idv-doc-enrich-dev -ResourceGroupName rg-idv-enrichment -Force
 #>
 
 param(
@@ -45,11 +38,7 @@ param(
     [Parameter(Mandatory)]
     [string]$ResourceGroupName,
 
-    [Parameter(Mandatory)]
-    [ValidateSet("FullAccess", "SiteSelected")]
-    [string]$Approach,
-
-    [string]$SiteUrl
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,33 +73,39 @@ Write-Host "  Managed Identity App ID    : $miAppId"
 # --- Step 2: Connect to Microsoft Graph ---
 Write-Host "`n=== Step 2: Connecting to Microsoft Graph ===" -ForegroundColor Cyan
 
-$scopes = if ($Approach -eq "SiteSelected") {
-    "AppRoleAssignment.ReadWrite.All", "Sites.FullControl.All"
-} else {
-    "AppRoleAssignment.ReadWrite.All"
-}
-
-Connect-MgGraph -Scopes $scopes
+Connect-MgGraph -Scopes "AppRoleAssignment.ReadWrite.All"
 Write-Host "  Connected."
 
-# --- Step 3: Get Graph service principal and target role ---
+# --- Confirmation ---
+Write-Host "`n=== Permission Summary ===" -ForegroundColor Yellow
+Write-Host "  This script will grant the following application permissions to '$FunctionAppName':"
+Write-Host "    - Sites.ReadWrite.All  (read/write access to ALL SharePoint sites in the tenant)"
+Write-Host ""
+Write-Host "  These are tenant-wide permissions. Ensure you have authorization to grant them." -ForegroundColor Yellow
+
+if (-not $Force) {
+    $confirm = Read-Host "  Type 'yes' to proceed"
+    if ($confirm -ne "yes") {
+        Write-Host "  Aborted." -ForegroundColor Red
+        exit 0
+    }
+}
+
+# --- Step 3: Granting Graph API permission ---
 Write-Host "`n=== Step 3: Granting Graph API permission ===" -ForegroundColor Cyan
 
 $graphSp = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
 
-$roleName = if ($Approach -eq "FullAccess") { "Sites.ReadWrite.All" } else { "Sites.Selected" }
-$role = $graphSp.AppRoles | Where-Object { $_.Value -eq $roleName }
-
+$role = $graphSp.AppRoles | Where-Object { $_.Value -eq "Sites.ReadWrite.All" }
 if (-not $role) {
-    throw "Could not find Graph API role: $roleName"
+    throw "Could not find Graph API role: Sites.ReadWrite.All"
 }
 
-# Check if already assigned
-$existing = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $miObjectId |
-    Where-Object { $_.AppRoleId -eq $role.Id }
+$existingAssignments = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $miObjectId
+$existing = $existingAssignments | Where-Object { $_.AppRoleId -eq $role.Id }
 
 if ($existing) {
-    Write-Host "  $roleName is already assigned. Skipping." -ForegroundColor Yellow
+    Write-Host "  Sites.ReadWrite.All is already assigned. Skipping." -ForegroundColor Yellow
 } else {
     New-MgServicePrincipalAppRoleAssignment `
         -ServicePrincipalId $miObjectId `
@@ -118,26 +113,7 @@ if ($existing) {
         -ResourceId $graphSp.Id `
         -AppRoleId $role.Id | Out-Null
 
-    Write-Host "  Granted: $roleName" -ForegroundColor Green
-}
-
-# Grant Files.ReadWrite.All (required for @microsoft.graph.downloadUrl on DriveItems)
-$filesRole = $graphSp.AppRoles | Where-Object { $_.Value -eq "Files.ReadWrite.All" }
-if (-not $filesRole) {
-    throw "Could not find Graph API role: Files.ReadWrite.All"
-}
-$existingFiles = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $miObjectId |
-    Where-Object { $_.AppRoleId -eq $filesRole.Id }
-
-if ($existingFiles) {
-    Write-Host "  Files.ReadWrite.All is already assigned. Skipping." -ForegroundColor Yellow
-} else {
-    New-MgServicePrincipalAppRoleAssignment `
-        -ServicePrincipalId $miObjectId `
-        -PrincipalId $miObjectId `
-        -ResourceId $graphSp.Id `
-        -AppRoleId $filesRole.Id | Out-Null
-    Write-Host "  Granted: Files.ReadWrite.All" -ForegroundColor Green
+    Write-Host "  Granted: Sites.ReadWrite.All" -ForegroundColor Green
 }
 
 # --- Step 4: Verify permissions ---
@@ -147,71 +123,8 @@ Write-Host "  Entra ID -> Enterprise Applications -> '$FunctionAppName' -> Permi
 Write-Host "  The granted permissions should appear under 'Application permissions'."
 Write-Host ""
 
-if ($Approach -eq "FullAccess") {
-    Write-Host "=== Setup complete (FullAccess) ===" -ForegroundColor Green
-    Write-Host "  The Function App can read/write any SharePoint site."
-    Write-Host "  No further permission steps needed."
-    return
-}
+Disconnect-MgGraph
 
-# --- Step 5 (SiteSelected only): Grant site-level write access ---
-Write-Host "`n=== Step 5: Granting site-level write access ===" -ForegroundColor Cyan
-
-if (-not $SiteUrl) {
-    throw "-SiteUrl is required for SiteSelected approach. Example: 'contoso.sharepoint.com:/sites/ActiveProjects'"
-}
-
-# Resolve site ID from URL
-$site = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$SiteUrl"
-$siteId = $site.id
-Write-Host "  Resolved site: $($site.displayName) ($siteId)"
-
-# Check existing permissions
-$existingPerms = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/permissions"
-$alreadyGranted = $existingPerms.value | Where-Object {
-    $_.grantedToIdentitiesV2.application.id -eq $miAppId
-}
-
-if ($alreadyGranted) {
-    Write-Host "  Site-level permission already granted. Skipping." -ForegroundColor Yellow
-} else {
-    $body = @{
-        roles = @("write")
-        grantedToIdentitiesV2 = @(
-            @{
-                application = @{
-                    id = $miAppId
-                    displayName = $FunctionAppName
-                }
-            }
-        )
-    }
-
-    Invoke-MgGraphRequest -Method POST `
-        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/permissions" `
-        -Body ($body | ConvertTo-Json -Depth 5) `
-        -ContentType "application/json" | Out-Null
-
-    Write-Host "  Granted: write access on $($site.displayName)" -ForegroundColor Green
-}
-
-# --- Step 6: Verify access ---
-Write-Host "`n=== Step 6: Verifying access ===" -ForegroundColor Cyan
-Write-Host "  NOTE: Verification uses YOUR credentials, not the Managed Identity."
-Write-Host "  The Managed Identity will use these permissions at runtime via DefaultAzureCredential."
-Write-Host ""
-
-try {
-    $drives = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/drives"
-    Write-Host "  Site has $($drives.value.Count) document library/libraries:" -ForegroundColor Green
-    foreach ($d in $drives.value) {
-        Write-Host "    - $($d.name) (driveId: $($d.id))"
-    }
-} catch {
-    Write-Host "  Could not list drives: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "  This may be expected if permissions have not yet propagated."
-}
-
-Write-Host "`n=== Setup complete (SiteSelected) ===" -ForegroundColor Green
-Write-Host "  The Function App can read/write the granted site."
-Write-Host "  To add another site, re-run with a different -SiteUrl."
+Write-Host "=== Setup complete ===" -ForegroundColor Green
+Write-Host "  The Function App can read/write any SharePoint site."
+Write-Host "  No further permission steps needed."
