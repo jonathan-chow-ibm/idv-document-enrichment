@@ -8,6 +8,15 @@
       -FullAccess    → Sites.ReadWrite.All (all sites, simpler setup)
       -SiteSelected  → Sites.Selected (one site, requires site-level grant)
 
+    PREREQUISITES:
+      1. Azure CLI installed and authenticated: az login
+      2. Microsoft.Graph PowerShell module:
+            Install-Module Microsoft.Graph -Scope CurrentUser
+      3. Entra ID role: Global Administrator or Privileged Role Administrator
+         (required to consent AppRoleAssignment.ReadWrite.All)
+      Note: The script prompts for Microsoft Graph authentication separately
+            from az login — you will be asked to sign in twice.
+
 .PARAMETER FunctionAppName
     Name of the deployed Azure Function App.
 
@@ -57,7 +66,17 @@ if (-not $miObjectId) {
     throw "Could not retrieve Managed Identity. Is the Function App deployed with a system-assigned identity?"
 }
 
-$miAppId = az ad sp show --id $miObjectId --query appId -o tsv
+$maxRetries = 5
+$miAppId = $null
+for ($i = 1; $i -le $maxRetries; $i++) {
+    $miAppId = az ad sp show --id $miObjectId --query appId -o tsv 2>$null
+    if ($miAppId) { break }
+    Write-Host "  Managed Identity not yet visible in Entra ID, retrying ($i/$maxRetries)..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 10
+}
+if (-not $miAppId) {
+    throw "Could not retrieve App ID for Managed Identity after $maxRetries retries. Ensure the Function App is deployed and try again in a minute."
+}
 
 Write-Host "  Managed Identity Object ID : $miObjectId"
 Write-Host "  Managed Identity App ID    : $miAppId"
@@ -104,6 +123,9 @@ if ($existing) {
 
 # Grant Files.ReadWrite.All (required for @microsoft.graph.downloadUrl on DriveItems)
 $filesRole = $graphSp.AppRoles | Where-Object { $_.Value -eq "Files.ReadWrite.All" }
+if (-not $filesRole) {
+    throw "Could not find Graph API role: Files.ReadWrite.All"
+}
 $existingFiles = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $miObjectId |
     Where-Object { $_.AppRoleId -eq $filesRole.Id }
 
