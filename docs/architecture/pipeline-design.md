@@ -1,5 +1,10 @@
 # Pipeline Design — Technical Reference
 
+> ⚠️ **PARTIALLY STALE** — the Mermaid diagram and activity table were updated 2026-08-27 to reflect the
+> drawing vision path and current model names. Sections 3–7 (XLSX branch, batch design, taxonomy,
+> observability, data contracts) contain pre-v4 field names and types — see [taxonomy.yaml](../taxonomy/taxonomy.yaml)
+> for current configuration.
+
 _Last updated: 2026-08-19. Reflects implemented code on branch `xlsx-native-parsing`._
 
 ---
@@ -8,85 +13,59 @@ _Last updated: 2026-08-19. Reflects implemented code on branch `xlsx-native-pars
 
 ```mermaid
 graph TB
-    subgraph SharePoint["SharePoint Online (10 sites)"]
-        DocLib["Document Libraries<br/>(Active Project Files)"]
-        MetaCols["Metadata Columns<br/>(DocumentType, DealType, Submarket, etc.)"]
+    subgraph SharePoint["SharePoint Online"]
+        DocLib["Document Libraries"]
+        MetaCols["Metadata Columns\n(DocumentType, Confidence, fields...)"]
     end
 
-    subgraph PowerAutomate["Power Automate Premium (not yet built)"]
-        TriggerFlow["Flow 1: Document Event Trigger<br/>(create / modify / move)"]
-        WriteBackFlow["Flow 2: Metadata Write-Back<br/>(trigger mode only)"]
-    end
-
-    subgraph AzureFunctions["Azure Functions (Durable, Flex Consumption)"]
-        HttpEnrich["POST /api/enrich<br/>(trigger mode)"]
-        HttpBatch["POST /api/batch<br/>(batch mode)"]
-        BatchOrch["BatchProcessingOrchestrator<br/>(splits into chunks)"]
-        ChunkOrch["ChunkProcessingOrchestrator ×N<br/>(parallel group)"]
-        DocOrch["DocumentProcessingOrchestrator<br/>(single doc)"]
-        ExtractActivity["ExtractContent<br/>(ClosedXML or Doc Intelligence)"]
-        ClassifyActivity["Agent 1: ClassifyType<br/>(GPT-4o-mini)"]
-        ExtractMetaActivity["Agent 2: ExtractMetadata<br/>(GPT-4o, Structured Outputs)"]
-        RouteActivity["RouteResult<br/>(confidence gate + telemetry)"]
-        WriteBackActivity["WriteMetadata<br/>(Graph API)"]
+    subgraph AzureFunctions["Azure Functions — Durable (Flex Consumption FC1)"]
+        HttpBatch["POST /api/batch"]
+        HttpEnrich["POST /api/enrich"]
+        BatchOrch["BatchProcessingOrchestrator\n(enumerate → filter → chunk)"]
+        ChunkOrch["ChunkProcessingOrchestrator ×N\n(parallel groups of MaxConcurrency)"]
+        DocOrch["DocumentProcessingOrchestrator\n(per document)"]
+        ExtractContent["ExtractContent\n(Doc Intelligence or ClosedXML)"]
+        ClassifyType["Agent 1: ClassifyType\n(gpt-4.1-mini)"]
+        ExtractDrawing["ExtractDrawingDetails\n(render page 1 → gpt-4.1-mini vision)\n[drawings / plats / surveys only]"]
+        ExtractMetadata["Agent 2: ExtractMetadata\n(gpt-4o, strict JSON schema)"]
+        RouteResult["RouteResult\n(confidence gate + App Insights)"]
+        WriteMetadata["WriteMetadata\n(Graph API PATCH)"]
+        RecordResult["RecordProcessingResult\n(Table Storage)"]
     end
 
     subgraph AIServices["Azure AI Services"]
-        DocIntel["Azure AI<br/>Document Intelligence<br/>(Read Model)"]
-        GPT4oMini["Azure OpenAI<br/>(GPT-4o-mini)<br/>Classification"]
-        GPT4o["Azure OpenAI<br/>(GPT-4o)<br/>Structured Outputs"]
+        DocIntel["Azure AI Document Intelligence\n(prebuilt-layout, Markdown output)"]
+        OpenAI["Azure OpenAI\ngpt-4.1-mini + gpt-4o"]
     end
 
     subgraph Storage["Azure Storage"]
-        DurableStore["Table + Blob Storage<br/>(Durable task hub + tracking table + batch reports)"]
-        TaxonomyBlob["Blob: config/taxonomy.yaml<br/>(cached in-memory on startup)"]
+        TaskHub["Durable task hub\n(Table + Blob)"]
+        ConfigBlob["Blob: config/taxonomy.yaml"]
+        ReportsBlob["Blob: batch-reports/"]
+        TrackingTable["Table: ProcessingTracking"]
     end
 
-    subgraph Monitoring["Observability"]
-        AppInsights["Application Insights<br/>(DocumentEnriched custom events)"]
-    end
-
-    %% Trigger Flow
-    DocLib -->|"doc event"| TriggerFlow
-    TriggerFlow -->|"HTTP POST"| HTTPTrigger
-    HTTPTrigger -->|"enqueue"| Queue
-    Queue -->|"dequeue"| QueueTrigger
-    QueueTrigger --> Orchestrator
-
-    %% Batch Mode
-    BatchOrch -->|"enumerate via Graph API"| DocLib
-    BatchOrch -->|"fan-out: 1 msg per doc"| Queue
-
-    %% Processing Pipeline — Two-Agent Flow
-    Orchestrator --> ExtractActivity
-    ExtractActivity -->|"POST /analyze"| DocIntel
-    DocIntel -->|"extracted text + KV pairs"| ExtractActivity
-
-    Orchestrator --> ClassifyActivity
-    ClassifyActivity -->|"chat completion"| GPT4oMini
-    GPT4oMini -->|"DocumentType + confidence"| ClassifyActivity
-
-    Orchestrator --> ExtractMetaActivity
-    ExtractMetaActivity -->|"load type-specific template"| PromptBlob
-    ExtractMetaActivity -->|"load taxonomy"| TaxonomyBlob
-    ExtractMetaActivity -->|"structured output call"| GPT4o
-    GPT4o -->|"typed metadata JSON"| ExtractMetaActivity
-
-    Orchestrator --> RouteActivity
-
-    %% Output Routing
-    RouteActivity -->|"all docs"| WriteBackFlow
-    RouteActivity -->|"all docs (batch)"| WriteBackActivity
-    WriteBackFlow -->|"update columns"| MetaCols
-    WriteBackActivity -->|"Graph API batch update"| MetaCols
-
-    %% Observability
-    Orchestrator -->|"traces, metrics"| AppInsights
-    AIServices -->|"usage metrics"| CostMgmt
-    AppInsights -->|"failure alerts"| Alerts
-
-    %% State Storage
-    Orchestrator -.->|"checkpoints"| DurableStore
+    HttpBatch -->|"resolve + enumerate"| DocLib
+    HttpBatch --> BatchOrch
+    HttpEnrich --> DocOrch
+    BatchOrch --> ChunkOrch
+    ChunkOrch --> DocOrch
+    DocOrch --> ExtractContent
+    ExtractContent -->|"PDF/DOCX/etc"| DocIntel
+    DocOrch --> ClassifyType
+    ClassifyType --> OpenAI
+    DocOrch -->|"DesignDrawing / Plat / Survey\nor low-text PDF"| ExtractDrawing
+    ExtractDrawing -->|"page 1 PNG + OCR text"| OpenAI
+    DocOrch --> ExtractMetadata
+    ExtractMetadata -->|"type-specific schema"| OpenAI
+    DocOrch --> RouteResult
+    RouteResult --> WriteMetadata
+    WriteMetadata -->|"PATCH listItem/fields"| MetaCols
+    DocOrch --> RecordResult
+    DocOrch -.->|"checkpoints"| TaskHub
+    ExtractMetadata -.->|"load"| ConfigBlob
+    BatchOrch -->|"report"| ReportsBlob
+    RecordResult --> TrackingTable
 ```
 
 ## 2. Component Responsibilities
@@ -106,6 +85,7 @@ graph TB
 | `GetDocumentDownloadUrl` | Resolves pre-authenticated download URL via Graph API. Passes through non-SharePoint URLs (test mode). |
 | `ExtractContent` | **Branches on file extension.** `.xlsx`/`.xlsm` → ClosedXML markdown serialization. `.xls`/`.xlsb` → UnsupportedFormat sentinel. All other formats → Azure AI Document Intelligence (`prebuilt-layout`, Markdown output). |
 | `ClassifyType` | **Agent 1 (GPT-4o-mini).** Renders `ClassifyType.hbs` + `UserDocument.hbs` with taxonomy and truncated text (4K chars). Returns `DocumentType`, `Confidence`, `Reasoning`. |
+| `ExtractDrawingDetails` | **Drawing vision (gpt-4.1-mini multimodal).** Downloads PDF, renders page 1 to PNG via Docnet.Core + SkiaSharp, sends page image + OCR text to gpt-4.1-mini. Returns `discipline`, `sheetNumber`, `drawingTitle` with confidence. Fires for `DesignDrawing`, `Plat`, `Survey` types and low-text PDFs. Gracefully skipped on render failure. |
 | `GetTypeConfidenceThreshold` | Looks up per-type confidence threshold from taxonomy. |
 | `ExtractMetadata` | **Agent 2 (GPT-4o Structured Outputs).** Renders `ExtractMetadata.hbs` with type-specific fields from taxonomy. Builds JSON schema dynamically via `MetadataSchemaBuilder`. Returns common fields + type-specific fields + suggested fields, each with value/confidence/reasoning. |
 | `RouteResult` | Evaluates per-field confidence against taxonomy thresholds. Sets routing decision (`Write`/`Review`). Emits `DocumentEnriched` custom event to App Insights. |
@@ -125,6 +105,7 @@ graph TB
 | `MetadataSchemaBuilder` | Builds GPT-4o Structured Output JSON schema dynamically from taxonomy field definitions. Schema updates when taxonomy changes — no code change needed. |
 | `SpreadsheetExtractor` | ClosedXML-based XLSX/XLSM parser. 50 MB size guard. Serializes each worksheet as a Markdown table with sheet-name header. |
 | `TextUtils` | Page-aware text truncation using `<!-- PageBreak -->` markers, falling back to sentence boundary, then hard cut. |
+| `PdfPageRenderer` | Renders first page of a PDF to a PNG byte array using Docnet.Core (libpdfium) + SkiaSharp. Thread-safe via static lock (Docnet singleton is not thread-safe). Max resolution: 1568×2048 px. |
 
 ### Entry Points (HTTP Triggers)
 
