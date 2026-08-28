@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Provisions the taxonomy v4 metadata columns on a SharePoint document library
-    via Microsoft Graph API. Run after Graph permissions are granted.
+    Provisions the taxonomy v4 metadata columns and 5 content types on a SharePoint
+    document library via Microsoft Graph API. Run after Graph permissions are granted.
 
-    Columns mirror docs/taxonomy/taxonomy.yaml (v4). Review is handled inline via a
-    filtered library view on AIProcessingStatus (ADR-006) — no separate review list.
+    Columns and content types mirror docs/taxonomy/taxonomy.yaml (v4) and ADR-009.
+    Review is handled inline via a filtered library view on AIProcessingStatus (ADR-006).
 
 .PARAMETER SiteUrl
     SharePoint site URL. Example: "contoso.sharepoint.com:/sites/ActiveProjects"
@@ -54,6 +54,19 @@ if (-not $docList) {
 $docListId = $docList.id
 
 Write-Host "Library: $DocumentLibraryName (listId: $docListId, driveId: $($drive.id))" -ForegroundColor Cyan
+
+# --- Enable content type management on the library (must precede content type creation) ---
+Write-Host "`n=== Enable Content Type Management ===" -ForegroundColor Cyan
+if ($DryRun) {
+    Write-Host "  [DRY RUN] Would PATCH list to enable contentTypesEnabled" -ForegroundColor DarkGray
+} else {
+    $patchBody = @{ list = @{ contentTypesEnabled = $true } } | ConvertTo-Json -Depth 3
+    Invoke-MgGraphRequest -Method PATCH `
+        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId" `
+        -Body $patchBody `
+        -ContentType "application/json" | Out-Null
+    Write-Host "  [OK] contentTypesEnabled = true" -ForegroundColor Green
+}
 
 # --- Choice value sets (keep in sync with taxonomy.yaml v4) ---
 $documentTypes = @(
@@ -152,18 +165,174 @@ foreach ($col in $columns) {
     $created++
 }
 
+# --- Build column name → id map (re-fetch after creation so new IDs are present) ---
+$libColumns = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns").value
+$colIdByName = @{}
+foreach ($libCol in $libColumns) {
+    if ($libCol.name) { $colIdByName[$libCol.name] = $libCol.id }
+}
+
+# --- Content type column assignments (per ADR-009) ---
+$ctCommonCols = @(
+    # AI operational
+    "DocumentType", "AIConfidence", "AIProcessingStatus", "AIClassifiedDate",
+    "SuggestedFields", "AIOriginalClassification", "SourceSystem",
+    # Folder-derived
+    "State", "PropertyName", "ProjectName",
+    # Universal
+    "DocumentStatus", "Counterparty", "TransactionType",
+    # Property
+    "PropertyAddress", "ParcelID", "County", "CityJurisdiction",
+    "Acres", "SquareFootage", "LandUse", "Zoning", "OpportunityZone"
+)
+$ctTransactionCols = @(
+    "ExecutionDate", "EffectiveDate", "ExpirationDate",
+    "Seller", "Buyer", "Broker", "TitleCompany", "ClosingDate",
+    "PurchasePrice", "EarnestMoney", "DepositAmount", "ContractValue",
+    "EntityName", "InvestorFund"
+)
+$ctDrawingCols    = @("Discipline", "SheetNumber", "DrawingTitle")
+$ctReportDateCols = @("ExecutionDate", "EffectiveDate", "ExpirationDate")
+
+$contentTypeDefs = @(
+    @{ name = "Contracts";     columns = $ctCommonCols + $ctTransactionCols }
+    @{ name = "Drawing Files"; columns = $ctCommonCols + $ctDrawingCols }
+    @{ name = "Reports";       columns = $ctCommonCols + $ctReportDateCols }
+    @{ name = "Budget Files";  columns = $ctCommonCols }
+    @{ name = "Other";         columns = $ctCommonCols + $ctTransactionCols }
+)
+
+# --- Get the Document parent content type ID from the site ---
+Write-Host "`n=== Site Content Types ===" -ForegroundColor Cyan
+$documentCtResponse = Invoke-MgGraphRequest -Method GET `
+    -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes?`$filter=name eq 'Document'"
+$documentCtId = $documentCtResponse.value[0].id
+if (-not $documentCtId) {
+    throw "Could not find 'Document' content type on site '$($site.displayName)'"
+}
+Write-Host "  Document parent CT ID: $documentCtId" -ForegroundColor DarkGray
+
+# --- Fetch existing site and library content types for idempotency checks ---
+$existingSiteCTs = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes").value
+$existingSiteCtById = @{}
+foreach ($ct in $existingSiteCTs) {
+    if ($ct.name) { $existingSiteCtById[$ct.name] = $ct.id }
+}
+
+$existingLibCTs = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes").value
+$existingLibCtNames = $existingLibCTs | Select-Object -ExpandProperty name
+
+# --- Create/ensure 5 site content types, add columns, add to library ---
+$ctResults = @()
+$ctCreated = 0; $ctSkipped = 0
+
+foreach ($ctDef in $contentTypeDefs) {
+    $ctName = $ctDef.name
+    Write-Host ""
+    Write-Host "  Content type: $ctName ($($ctDef.columns.Count) columns)" -ForegroundColor Cyan
+
+    # Idempotent: check if the site CT already exists
+    if ($existingSiteCtById.ContainsKey($ctName)) {
+        $ctId = $existingSiteCtById[$ctName]
+        Write-Host "    [EXISTS] Site CT (id: $ctId)" -ForegroundColor Yellow
+        $ctSkipped++
+    } elseif ($DryRun) {
+        Write-Host "    [DRY RUN] Would create site CT '$ctName' (group: IDV Document Types)" -ForegroundColor DarkGray
+        $ctId = $null
+    } else {
+        $ctBody = @{
+            name              = $ctName
+            parentContentType = @{ id = $documentCtId }
+            group             = "IDV Document Types"
+        } | ConvertTo-Json -Depth 3
+        $newCt = Invoke-MgGraphRequest -Method POST `
+            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes" `
+            -Body $ctBody `
+            -ContentType "application/json"
+        $ctId = $newCt.id
+        Write-Host "    [CREATED] Site CT (id: $ctId)" -ForegroundColor Green
+        $ctCreated++
+    }
+
+    # Add columns to the site CT via `$ref
+    $existingCtColNames = @()
+    if ($ctId) {
+        $existingCtCols = (Invoke-MgGraphRequest -Method GET `
+            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes/$ctId/columns").value
+        $existingCtColNames = $existingCtCols | Where-Object { $_.name } | Select-Object -ExpandProperty name
+    }
+
+    $colLinked = 0; $colAlreadyLinked = 0; $colMissing = 0
+    foreach ($colName in $ctDef.columns) {
+        if ($existingCtColNames -contains $colName) {
+            $colAlreadyLinked++
+            continue
+        }
+        $colId = $colIdByName[$colName]
+        if (-not $colId) {
+            Write-Host "    [WARN] Column '$colName' not found in library — skipped" -ForegroundColor Yellow
+            $colMissing++
+            continue
+        }
+        if ($DryRun) {
+            Write-Host "    [DRY RUN] Would link column '$colName'" -ForegroundColor DarkGray
+            continue
+        }
+        $refBody = @{
+            "@odata.id" = "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns/$colId"
+        } | ConvertTo-Json
+        Invoke-MgGraphRequest -Method POST `
+            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes/$ctId/columns/`$ref" `
+            -Body $refBody `
+            -ContentType "application/json" | Out-Null
+        $colLinked++
+    }
+    if (-not $DryRun -and $ctId) {
+        Write-Host "    Columns: $colLinked linked | $colAlreadyLinked already linked | $colMissing missing" -ForegroundColor DarkGray
+    }
+
+    # Add site CT to the library
+    if ($existingLibCtNames -contains $ctName) {
+        Write-Host "    [EXISTS] Already in library" -ForegroundColor Yellow
+    } elseif ($DryRun) {
+        Write-Host "    [DRY RUN] Would add CT '$ctName' to library" -ForegroundColor DarkGray
+    } elseif ($ctId) {
+        $addCopyBody = @{
+            "@odata.id" = "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes/$ctId"
+        } | ConvertTo-Json
+        Invoke-MgGraphRequest -Method POST `
+            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes/`$addCopy" `
+            -Body $addCopyBody `
+            -ContentType "application/json" | Out-Null
+        Write-Host "    [ADDED] CT added to library" -ForegroundColor Green
+    }
+
+    $ctResults += [PSCustomObject]@{ Name = $ctName; Id = $ctId }
+}
+
 # --- Summary ---
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Write-Host "  Site            : $($site.displayName)"
 Write-Host "  Document Library: $DocumentLibraryName (listId: $docListId)"
 Write-Host "  Drive ID        : $($drive.id)"
 Write-Host "  Columns         : $($columns.Count) defined | $created created | $skipped existing"
+Write-Host "  Content Types   : $($contentTypeDefs.Count) defined | $ctCreated created | $ctSkipped existing"
+Write-Host ""
+Write-Host "Content type IDs:" -ForegroundColor Cyan
+foreach ($ct in $ctResults) {
+    if ($ct.Id) {
+        Write-Host ("  {0,-14} {1}" -f $ct.Name, $ct.Id) -ForegroundColor White
+    } else {
+        Write-Host ("  {0,-14} (dry run — not created)" -f $ct.Name) -ForegroundColor DarkGray
+    }
+}
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Folder-derived columns (State, PropertyName, ProjectName) should be populated via"
 Write-Host "     per-folder DEFAULT COLUMN VALUES (Set-PnPDefaultColumnValues), not by the pipeline."
-Write-Host "  2. Create a filtered library view 'Needs Review' on AIProcessingStatus = 'Under Review' (ADR-006)."
-Write-Host "  3. Map columns to managed properties in the search schema for Copilot grounding (tenant admin)."
+Write-Host "  2. Create per-type library views for reviewers: filter by Content Type (ADR-009)."
+Write-Host "  3. Create a filtered view 'Needs Review' on AIProcessingStatus = 'Under Review' (ADR-006)."
+Write-Host "  4. Map columns to managed properties in the search schema for Copilot grounding (tenant admin)."
 Write-Host ""
 Write-Host "For batch runs, pass the library or folder URL directly:" -ForegroundColor Yellow
 Write-Host "  POST /api/batch { `"url`": `"https://<tenant>.sharepoint.com/sites/<site>/$DocumentLibraryName`" }"
