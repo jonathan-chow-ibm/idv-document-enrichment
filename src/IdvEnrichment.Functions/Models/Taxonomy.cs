@@ -87,4 +87,10 @@ public sealed record TaxonomyData(
     /// <summary>Field names expected on every document — used to gate routing (empty non-universal fields don't force review).</summary>
     public IReadOnlySet<string> UniversalFieldNames() =>
         Metadata.Content.Universal.Select(f => f.FieldName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    public string? GetGroupForDocumentType(DocumentType documentType)
+    {
+        var def = GetDocumentType(documentType);
+        return def?.Group;
+    }
 }
