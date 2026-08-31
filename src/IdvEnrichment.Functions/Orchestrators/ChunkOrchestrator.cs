@@ -72,7 +72,8 @@ public sealed class ChunkOrchestrator
                 result.ProcessingMetrics.ExtractionInputTokens,
                 result.ProcessingMetrics.ExtractionOutputTokens,
                 result.ProcessingMetrics.VisionInputTokens,
-                result.ProcessingMetrics.VisionOutputTokens), true);
+                result.ProcessingMetrics.VisionOutputTokens,
+                result.Metadata?.SuggestedFields.Select(f => f.Key).ToList() ?? []), true);
         }
         catch (OperationCanceledException)
         {

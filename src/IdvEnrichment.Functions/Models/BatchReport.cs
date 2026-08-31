@@ -13,7 +13,8 @@ public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("extractionInputTokens")] int ExtractionInputTokens = 0,
     [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0,
     [property: JsonPropertyName("visionInputTokens")] int VisionInputTokens = 0,
-    [property: JsonPropertyName("visionOutputTokens")] int VisionOutputTokens = 0);
+    [property: JsonPropertyName("visionOutputTokens")] int VisionOutputTokens = 0,
+    [property: JsonPropertyName("suggestedFieldKeys")] IReadOnlyList<string> SuggestedFieldKeys = null!);
 
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
@@ -34,7 +35,13 @@ public sealed record BatchReport(
     [property: JsonPropertyName("summary")] BatchSummary Summary,
     [property: JsonPropertyName("confidenceDistribution")] ConfidenceDistribution ConfidenceDistribution,
     [property: JsonPropertyName("documentTypeCounts")] IReadOnlyDictionary<string, int> DocumentTypeCounts,
+    [property: JsonPropertyName("topSuggestedFields")] IReadOnlyList<SuggestedFieldEntry> TopSuggestedFields,
     [property: JsonPropertyName("cost")] BatchCost Cost);
+
+public sealed record SuggestedFieldEntry(
+    [property: JsonPropertyName("key")] string Key,
+    [property: JsonPropertyName("documentCount")] int DocumentCount,
+    [property: JsonPropertyName("exampleValues")] IReadOnlyList<string> ExampleValues);
 
 public sealed record BatchSummary(
     [property: JsonPropertyName("totalDocuments")] int TotalDocuments,

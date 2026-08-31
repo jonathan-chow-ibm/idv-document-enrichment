@@ -32,6 +32,15 @@ public sealed class GenerateBatchReportActivity(
             .GroupBy(r => JsonSerializer.Serialize(r.DocumentType).Trim('"'))
             .ToDictionary(g => g.Key, g => g.Count());
 
+        var topSuggestedFields = input.Results
+            .Where(r => r.SuggestedFieldKeys != null)
+            .SelectMany(r => r.SuggestedFieldKeys)
+            .GroupBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .Take(20)
+            .Select(g => new SuggestedFieldEntry(g.Key, g.Count(), []))
+            .ToList();
+
         var classificationInputTokens = input.Results.Sum(r => (long)r.ClassificationInputTokens);
         var classificationOutputTokens = input.Results.Sum(r => (long)r.ClassificationOutputTokens);
         var extractionInputTokens = input.Results.Sum(r => (long)r.ExtractionInputTokens);
@@ -53,6 +62,7 @@ public sealed class GenerateBatchReportActivity(
                 Skipped: 0),
             ConfidenceDistribution: new ConfidenceDistribution(High: high, Medium: medium, Low: low),
             DocumentTypeCounts: typeCounts,
+            TopSuggestedFields: topSuggestedFields,
             Cost: new BatchCost(
                 DocumentIntelligence: 0m,
                 ClassificationTokens: new TokenUsage(classificationInputTokens, classificationOutputTokens),
@@ -143,7 +153,21 @@ public sealed class GenerateBatchReportActivity(
             sb.AppendLine($"<tr><td>{type}</td><td>{count:N0}</td><td>{pct:F1}%</td></tr>");
         }
         sb.AppendLine("</tbody></table>");
+if (r.TopSuggestedFields.Count > 0)
+        {
+            sb.AppendLine("<h2>Top Suggested Fields</h2>");
+            sb.AppendLine("<p>Fields the AI discovered in documents that are not in the current taxonomy. Consider adding high-frequency fields to the taxonomy.</p>");
+            sb.AppendLine("<table><thead><tr><th>Field Key</th><th>Documents</th><th>% of Total</th></tr></thead><tbody>");
+            foreach (var entry in r.TopSuggestedFields)
+            {
+                var pct = total > 0 ? entry.DocumentCount * 100.0 / total : 0;
+                var safeKey = System.Net.WebUtility.HtmlEncode(entry.Key);
+                sb.AppendLine($"<tr><td>{safeKey}</td><td>{entry.DocumentCount:N0}</td><td>{pct:F1}%</td></tr>");
+            }
+            sb.AppendLine("</tbody></table>");
+        }
 
+        
         sb.AppendLine($"<p style=\"color:#999;font-size:.8em;margin-top:32px\">Generated {r.CompletedAt:yyyy-MM-dd HH:mm:ss} UTC</p>");
         sb.AppendLine("</body></html>");
 
