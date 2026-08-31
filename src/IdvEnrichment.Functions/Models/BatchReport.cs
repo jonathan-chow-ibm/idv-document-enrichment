@@ -35,8 +35,17 @@ public sealed record BatchReport(
     [property: JsonPropertyName("summary")] BatchSummary Summary,
     [property: JsonPropertyName("confidenceDistribution")] ConfidenceDistribution ConfidenceDistribution,
     [property: JsonPropertyName("documentTypeCounts")] IReadOnlyDictionary<string, int> DocumentTypeCounts,
-    [property: JsonPropertyName("topSuggestedFields")] IReadOnlyList<SuggestedFieldEntry> TopSuggestedFields,
+    [property: JsonPropertyName("suggestedFieldsByGroup")] IReadOnlyList<SuggestedFieldsByGroup> SuggestedFieldsByGroup,
     [property: JsonPropertyName("cost")] BatchCost Cost);
+
+public sealed record SuggestedFieldsByGroup(
+    [property: JsonPropertyName("group")] string Group,
+    [property: JsonPropertyName("byDocumentType")] IReadOnlyList<SuggestedFieldsByDocumentType> ByDocumentType);
+
+public sealed record SuggestedFieldsByDocumentType(
+    [property: JsonPropertyName("documentType")] string DocumentType,
+    [property: JsonPropertyName("documentCount")] int DocumentCount,
+    [property: JsonPropertyName("topFields")] IReadOnlyList<SuggestedFieldEntry> TopFields);
 
 public sealed record SuggestedFieldEntry(
     [property: JsonPropertyName("key")] string Key,
