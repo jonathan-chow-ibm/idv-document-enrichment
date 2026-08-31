@@ -85,14 +85,36 @@ public sealed class DocumentOrchestrator
                         new ExtractDrawingDetailsInput(downloadUrl, message.FileName, extraction.Text),
                         retry);
 
-                    if ((typeClassification.DocumentType == DocumentType.Other
-                         || typeClassification.DocumentType == DocumentType.Plat
-                         || typeClassification.DocumentType == DocumentType.Survey)
-                        && drawingClassification.Confidence > 0.7
+                    // Vision sees the title block, seals and dedication blocks directly, so it is
+                    // better placed than Agent 1 (scrambled OCR) to tell Plat / Survey / Design Drawing
+                    // apart. "Not a Drawing" maps to null so the override is skipped entirely.
+                    DocumentType? visionType = drawingClassification.DrawingType switch
+                    {
+                        "Plat" => DocumentType.Plat,
+                        "Survey" => DocumentType.Survey,
+                        "Design Drawing" => DocumentType.DesignDrawing,
+                        _ => null,
+                    };
+
+                    var agent1IsDrawingFamily = typeClassification.DocumentType
+                        is DocumentType.DesignDrawing or DocumentType.Plat or DocumentType.Survey;
+
+                    // Fill-in: Agent 1 had no answer — low bar, anything beats Other.
+                    var fillIn = typeClassification.DocumentType == DocumentType.Other
+                                 && drawingClassification.Confidence > 0.7;
+
+                    // Correction: Agent 1 had an answer within the drawing family and vision
+                    // disagrees — higher bar to overturn a considered classification.
+                    var correction = agent1IsDrawingFamily
+                                     && visionType != typeClassification.DocumentType
+                                     && drawingClassification.Confidence > 0.8;
+
+                    if (visionType is { } resolvedType
+                        && (fillIn || correction)
                         && !string.IsNullOrEmpty(drawingClassification.Discipline))
                     {
                         typeClassification = new TypeClassificationResult(
-                            DocumentType.DesignDrawing,
+                            resolvedType,
                             drawingClassification.Confidence,
                             $"Vision override: {drawingClassification.Reasoning}",
                             typeClassification.InputTokens,

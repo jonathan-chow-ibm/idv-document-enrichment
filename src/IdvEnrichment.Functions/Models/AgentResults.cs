@@ -37,6 +37,8 @@ public sealed record DrawingClassification(
     [property: JsonPropertyName("drawingTitle")] string DrawingTitle,
     [property: JsonPropertyName("confidence")] double Confidence,
     [property: JsonPropertyName("reasoning")] string Reasoning,
+    // "Plat" | "Survey" | "Design Drawing" — lets the vision override pick the correct document type
+    [property: JsonPropertyName("drawingType")] string DrawingType = "",
     [property: JsonPropertyName("inputTokens")] int InputTokens = 0,
     [property: JsonPropertyName("outputTokens")] int OutputTokens = 0,
     [property: JsonPropertyName("durationMs")] int DurationMs = 0);
