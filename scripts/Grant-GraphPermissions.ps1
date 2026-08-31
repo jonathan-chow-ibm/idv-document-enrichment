@@ -73,7 +73,7 @@ Write-Host "  Managed Identity App ID    : $miAppId"
 # --- Step 2: Connect to Microsoft Graph ---
 Write-Host "`n=== Step 2: Connecting to Microsoft Graph ===" -ForegroundColor Cyan
 
-Connect-MgGraph -Scopes "AppRoleAssignment.ReadWrite.All"
+Connect-MgGraph -Scopes "AppRoleAssignment.ReadWrite.All", "Application.Read.All"
 Write-Host "  Connected."
 
 # --- Confirmation ---
