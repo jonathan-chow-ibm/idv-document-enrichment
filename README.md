@@ -2,6 +2,12 @@
 
 AI-powered document classification, tagging, and indexing pipeline for SharePoint Online documents.
 
+> ### 👉 New to this repository? Start with **[docs/HANDOVER.md](docs/HANDOVER.md)**
+> It covers current state, which documents are stale, known issues, and open decisions.
+>
+> - **[Operations runbook](docs/runbook-operations.md)** — run locally, deploy, execute a batch
+> - **[Configuration runbook](docs/runbook-configuration.md)** — change the taxonomy, fields, thresholds
+
 ## Overview
 
 Automated document enrichment pipeline that classifies, tags, and indexes active project documents inside SharePoint Online using:
@@ -14,13 +20,18 @@ Automated document enrichment pipeline that classifies, tags, and indexes active
 
 ## Architecture
 
-See [docs/architecture/](docs/architecture/) for detailed architecture documentation:
+⚠️ **These deep-dives predate the v4 taxonomy and the drawing vision path** (last substantively updated
+mid-Aug 2026). The overall architecture is accurate; specifics are out of date. See
+[HANDOVER.md §4](docs/HANDOVER.md) for what changed.
 
 - [Pipeline Design](docs/architecture/pipeline-design.md) — end-to-end architecture, component interactions, data flow
 - [Durable Functions Orchestration](docs/architecture/durable-functions-orchestration.md) — orchestrator design, retry policies, fan-out/fan-in
 - [Prompt Engineering Strategy](docs/architecture/prompt-engineering-strategy.md) — classification prompts, structured output, taxonomy integration
 - [Power Automate Integration](docs/architecture/power-automate-integration.md) — flow design, triggers, write-back patterns
-- [Human Review Queue](docs/architecture/human-review-queue.md) — review interface, correction capture, feedback loop
+- ~~[Human Review Queue](docs/architecture/human-review-queue.md)~~ — **SUPERSEDED by [ADR-006](docs/decisions/adr-006-inline-review.md)**. Describes a separate review list + Power Apps form that was never built; the implemented design is an inline filtered library view.
+
+**Current configuration** lives in [docs/taxonomy/taxonomy.yaml](docs/taxonomy/taxonomy.yaml) (v4) —
+document types, metadata fields, SharePoint column mappings, and confidence thresholds.
 
 ## Project Structure
 
@@ -28,31 +39,40 @@ See [docs/architecture/](docs/architecture/) for detailed architecture documenta
 idv-document-enrichment/
 ├── IdvEnrichment.sln
 ├── docs/
-│   ├── architecture/          # Deep-dive architecture documents
-│   └── decisions/             # ADRs
+│   ├── HANDOVER.md            # START HERE — current state, stale docs, known issues
+│   ├── runbook-operations.md  # run locally, deploy, execute a batch
+│   ├── runbook-configuration.md # change taxonomy / fields / thresholds
+│   ├── architecture/          # Deep-dive design docs (partially stale)
+│   ├── decisions/             # ADRs 001-008
+│   ├── taxonomy/              # taxonomy.yaml (v4) + client-facing docs
+│   └── design/                # discovery / UX analyses (background)
 ├── infra/                     # Bicep IaC
 │   ├── main.bicep
 │   └── main.bicepparam
+├── scripts/
+│   ├── Grant-GraphPermissions.ps1
+│   └── Provision-SharePointSchema.ps1  # creates SharePoint columns
 ├── src/
 │   └── IdvEnrichment.Functions/       # .NET 10 Azure Functions isolated worker
-│       ├── IdvEnrichment.Functions.csproj
-│       ├── Program.cs
-│       ├── host.json
+│       ├── Program.cs · host.json
 │       ├── local.settings.json        # gitignored
 │       ├── Configuration/             # IOptions bindings
 │       ├── Models/                    # Data contracts (C# records)
-│       ├── Orchestrators/             # Durable orchestrators
+│       ├── Orchestrators/             # Batch → Chunk → Document
 │       ├── Activities/                # Durable activities
-│       ├── Prompts/                   # Handlebars templates (per document type)
-│       └── Shared/                    # Shared services and utilities
-├── tests/
-│   ├── IdvEnrichment.UnitTests/        # xUnit unit tests
-│   ├── IdvEnrichment.IntegrationTests/ # xUnit + Aspire integration tests
-│   └── evaluation/                     # Python + Jupyter prompt evaluation harness
-├── .github/workflows/
+│       ├── Triggers/                  # HTTP triggers (batch, enrich, test)
+│       ├── Prompts/                   # Handlebars templates — EMBEDDED RESOURCES
+│       └── Shared/                    # TaxonomyLoader, extractors, renderer
+├── .github/workflows/         # empty — no CI/CD yet
 ├── .editorconfig
 └── .gitignore
 ```
+
+> **No test project exists.** An earlier version of this README described `tests/` with unit, integration,
+> and evaluation sub-projects — none were built. Core logic in `TextUtils`, `SpreadsheetExtractor`,
+> `MetadataSchemaBuilder`, and `RouteResultActivity` is pure and straightforward to test if you add one.
+>
+> **Prompts are embedded resources** — editing a `.hbs` requires `dotnet build` before it takes effect.
 
 ## Getting Started
 

@@ -1,5 +1,10 @@
 # Durable Functions Orchestration — Deep Dive
 
+> ⚠️ **PARTIALLY STALE** — last substantively updated mid-Aug 2026, before the v4 taxonomy, the drawing
+> vision path, and the folder-derived metadata model. The overall architecture is still accurate; specific
+> field names, document types, and flows may not be. See [HANDOVER.md](../HANDOVER.md) §4 for what changed,
+> and [taxonomy.yaml](../taxonomy/taxonomy.yaml) for the current configuration.
+
 ## 1. Why Durable Functions
 
 The document classification pipeline needs:

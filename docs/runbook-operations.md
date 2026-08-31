@@ -5,16 +5,14 @@ Configuration changes are covered in [runbook-configuration.md](runbook-configur
 
 ---
 
-## Environments
+## Environment
 
-| | Azure OpenAI | Doc Intelligence | Purpose |
-|---|---|---|---|
-| **Dev (Neudesic)** | `oai-idv-enrich-dev` / `rg-idv-enrichment` (VS Professional sub) | `di-idv-enrich-dev` | Local testing |
-| **Client (IDV)** | `oai-idv-doc-enrich-dev` / `rg-idv-enrich-dev` (sub `2fd2fd1c-…`) | — | Production batch |
-
-⚠️ The IDV VS/dev subscription is **MSDN with a spending limit ON** — if the monthly credit is exhausted the
-subscription is *disabled* and resources stop until the next cycle. Fine for testing; watch it if you push
-hundreds of documents through locally.
+| Resource | Value |
+|---|---|
+| Azure OpenAI | `oai-idv-doc-enrich-dev` / `rg-idv-enrich-dev` |
+| Doc Intelligence | `di-idv-doc-enrich-dev` |
+| Function App | `func-idv-doc-enrich-dev` |
+| Subscription | `2fd2fd1c-9d6c-4000-8fb8-ddec8b79a7f1` |
 
 ---
 
@@ -275,6 +273,57 @@ are not yet implemented.
 
 **Application Insights** — the `DocumentEnriched` custom event carries documentType, routingDecision,
 type confidence, and per-field confidence scores.
+
+### Useful KQL queries
+
+```kusto
+// All documents processed in a batch — type, decision, and key confidences
+customEvents
+| where name == "DocumentEnriched"
+| project
+    timestamp,
+    fileName        = tostring(customDimensions.fileName),
+    documentType    = tostring(customDimensions.documentType),
+    routingDecision = tostring(customDimensions.routingDecision),
+    batchId         = tostring(customDimensions.batchId),
+    typeConfidence  = todouble(customMeasurements.typeConfidence),
+    pageCount       = todouble(customMeasurements.pageCount)
+| order by timestamp desc
+```
+
+```kusto
+// Documents that went to Review — see which field was the gating issue
+customEvents
+| where name == "DocumentEnriched"
+    and tostring(customDimensions.routingDecision) == "Review"
+| project
+    fileName       = tostring(customDimensions.fileName),
+    documentType   = tostring(customDimensions.documentType),
+    typeConf       = todouble(customMeasurements.typeConfidence),
+    counterpartyC  = todouble(customMeasurements["field_counterparty_confidence"]),
+    transTypeC     = todouble(customMeasurements["field_transactionType_confidence"]),
+    countyC        = todouble(customMeasurements["field_county_confidence"])
+| order by typeConf asc
+```
+
+```kusto
+// Classification accuracy by document type
+customEvents
+| where name == "DocumentEnriched"
+| summarize
+    count(),
+    avgTypeConf  = avg(todouble(customMeasurements.typeConfidence)),
+    reviewRate   = countif(tostring(customDimensions.routingDecision) == "Review") * 100.0 / count()
+  by documentType = tostring(customDimensions.documentType)
+| order by reviewRate desc
+```
+
+```kusto
+// Extraction method breakdown (closedxml vs document-intelligence)
+customEvents
+| where name == "DocumentEnriched"
+| summarize count() by tostring(customDimensions.extractionMethod)
+```
 
 | Symptom | Likely cause |
 |---|---|

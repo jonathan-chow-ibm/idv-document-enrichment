@@ -61,25 +61,34 @@ document_types:
     description: "Financing or deal term sheet (typically a proposal, not executed)"
 
   # --- Drawing Files (PDF; some CAD) ---
-  - label: "Survey"
-    group: "Drawing Files"
-    description: "Boundary survey, ALTA survey, or topographic survey produced by a licensed surveyor for legal or title purposes. Construction drawings produced by architects are NOT surveys."
-    decision_rules:
-      - "Must be produced by a licensed surveyor (RPLS seal) for legal or title purposes"
-      - "Architectural or civil drawings are NOT surveys even if they show boundary lines"
+  # IMPORTANT — evaluate these three in order: Plat, then Survey, then Design Drawing.
+  # Plats and surveys are also drawn by engineering/surveying firms, so "prepared by an A/E firm"
+  # does NOT by itself mean Design Drawing. Match on the legal/title markers first.
   - label: "Plat"
     group: "Drawing Files"
-    description: "Officially recorded subdivision plat or replat filed with the county clerk. Must be a recorded legal instrument (has county recording number or cabinet/slide reference). Site plans and construction drawings are NOT plats."
+    description: "A subdivision plat or replat recorded (or to be recorded) with the county. A legal instrument that establishes lots, blocks, and dedications — not a construction drawing."
     decision_rules:
-      - "Must be a recorded legal instrument — look for county recording references (CAB., SL., INST. NO.) as proof of recording"
-      - "Site plans and construction drawings by architects are NOT plats even if they show lot lines"
+      - "CHECK FIRST: if the sheet's own title is PLAT, REPLAT, FINAL PLAT, AMENDING PLAT or similar, classify as Plat"
+      - "An owner's dedication statement ('...do hereby dedicate...') together with a city/county approval-and-signature block indicates a Plat"
+      - "A Plat CREATES lots and dedications; a Survey DEPICTS boundaries that already exist"
+      - "Citing recorded instruments (INST. NO., CAB./SL., VOL./PG.) does NOT by itself make a sheet a Plat — surveys routinely reference recorded easements and adjoining plats. Require the sheet's own title or a dedication/approval block"
+      - "Being drawn by an engineering or surveying firm does NOT make it a Design Drawing — plats are drawn by surveyors"
+  - label: "Survey"
+    group: "Drawing Files"
+    description: "A boundary, ALTA/NSPS, or topographic survey prepared by a licensed surveyor to establish legal boundaries for title or closing purposes — not a construction drawing."
+    decision_rules:
+      - "CHECK SECOND: an RPLS seal, 'Registered Professional Land Surveyor', or a surveyor's certification indicates a Survey"
+      - "The words ALTA, NSPS, 'LAND TITLE SURVEY', 'BOUNDARY SURVEY', or 'TOPOGRAPHIC SURVEY' indicate a Survey"
+      - "A title-company or commitment reference (e.g. 'Chicago Title', 'GF No.', 'Schedule B') indicates a Survey"
+      - "A survey that cites recorded plats or instrument numbers is still a Survey, NOT a Plat"
+      - "Being drawn by an engineering or surveying firm does NOT make it a Design Drawing — surveys are drawn by surveyors"
   - label: "Design Drawing"
     group: "Drawing Files"
-    description: "Architectural, civil, structural, or MEP drawing produced by an architect or engineer — includes site plans, floor plans, elevations, sections, grading plans, permit sets, and construction documents. A drawing produced by an A/E firm is always DesignDrawing regardless of how much text it contains."
+    description: "Architectural, civil, structural, or MEP construction drawing — site plans, floor plans, elevations, sections, details, general notes, grading plans, permit sets. A drawing produced by an A/E firm is a Design Drawing regardless of how much text it contains."
     decision_rules:
-      - "Any document produced by an architect or engineer (A/E firm) is DesignDrawing — regardless of how much text it contains"
-      - "Site plans, floor plans, permit sets, grading plans, elevations = DesignDrawing"
-      - "A Plat is a recorded county instrument with a cabinet/slide or recording number — not a design drawing"
+      - "CHECK LAST: use Design Drawing only when the Plat and Survey markers above are absent"
+      - "Site plans, floor plans, permit sets, grading plans, elevations, details, general notes = Design Drawing"
+      - "A drawing produced by an architect or engineer is a Design Drawing — unless it is a recorded Plat or a surveyor-sealed Survey, which take precedence"
 
   # --- Reports (PDF) ---
   - label: "Closing Statement"
