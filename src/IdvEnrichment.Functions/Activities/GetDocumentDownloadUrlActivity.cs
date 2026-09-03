@@ -25,9 +25,7 @@ public sealed class GetDocumentDownloadUrlActivity(GraphServiceClient graphClien
 
         var driveItem = await graphClient.Drives[input.DriveId]
             .Items[input.ItemId]
-            .GetAsync(
-                config => config.QueryParameters.Select = ["id", "@microsoft.graph.downloadUrl"],
-                ct);
+            .GetAsync(cancellationToken: ct);
 
         var downloadUrl = driveItem?.AdditionalData is { } data &&
             data.TryGetValue("@microsoft.graph.downloadUrl", out var urlObj)

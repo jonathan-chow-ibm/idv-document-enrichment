@@ -10,7 +10,7 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
 {
     private static readonly string[] SelectFields =
     [
-        "id", "name", "file", "folder", "lastModifiedDateTime", "@microsoft.graph.downloadUrl"
+        "id", "name", "file", "folder", "lastModifiedDateTime"
     ];
 
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -90,14 +90,9 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
                 }
                 else if (SupportedExtensions.Contains(Path.GetExtension(item.Name ?? "")))
                 {
-                    var downloadUrl = item.AdditionalData?.TryGetValue("@microsoft.graph.downloadUrl", out var urlObj) == true
-                        ? urlObj as string ?? string.Empty
-                        : string.Empty;
-
                     documents.Add(new LibraryDocument(
                         Id: item.Id!,
                         Name: item.Name!,
-                        DownloadUrl: downloadUrl,
                         MimeType: item.File?.MimeType ?? "application/octet-stream",
                         LastModifiedDateTime: item.LastModifiedDateTime ?? DateTimeOffset.MinValue,
                         FolderPath: folderPath));

@@ -35,7 +35,6 @@ public sealed record ResolvedSharePointTarget(
 public sealed record LibraryDocument(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("downloadUrl")] string DownloadUrl,
     [property: JsonPropertyName("mimeType")] string MimeType,
     [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset LastModifiedDateTime,
     [property: JsonPropertyName("folderPath")] string? FolderPath = null)

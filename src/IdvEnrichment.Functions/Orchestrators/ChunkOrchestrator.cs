@@ -55,7 +55,7 @@ public sealed class ChunkOrchestrator
                     DriveId: input.Target.DriveId,
                     ItemId: doc.Id,
                     FileName: doc.RelativePath,
-                    FileUrl: doc.DownloadUrl,
+                    FileUrl: string.Empty,
                     ContentType: doc.MimeType,
                     ModifiedDateTime: doc.LastModifiedDateTime,
                     Source: ProcessingSource.Batch,
