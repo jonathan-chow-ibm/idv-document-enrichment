@@ -170,7 +170,7 @@ public sealed class GenerateBatchReportActivity(
             sb.AppendLine($"<tr><td>{type}</td><td>{count:N0}</td><td>{pct:F1}%</td></tr>");
         }
         sb.AppendLine("</tbody></table>");
-if (r.SuggestedFieldsByGroup.Count > 0)
+        if (r.SuggestedFieldsByGroup.Count > 0)
         {
             sb.AppendLine("<h2>Suggested Fields by Document Type</h2>");
             sb.AppendLine("<p>Fields the AI discovered that are not in the current taxonomy. High-frequency fields are candidates for taxonomy additions.</p>");
@@ -195,7 +195,7 @@ if (r.SuggestedFieldsByGroup.Count > 0)
             }
         }
 
-        
+
         sb.AppendLine($"<p style=\"color:#999;font-size:.8em;margin-top:32px\">Generated {r.CompletedAt:yyyy-MM-dd HH:mm:ss} UTC</p>");
         sb.AppendLine("</body></html>");
 
