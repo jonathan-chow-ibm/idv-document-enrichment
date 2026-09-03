@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
-    Grants Sites.ReadWrite.All to the Function App's Managed Identity for SharePoint access.
+    Grants Sites.ReadWrite.All and Files.Read.All to the Function App's Managed Identity for SharePoint access.
     Run after deploying the Bicep infrastructure.
 
 .DESCRIPTION
-    Grants the Sites.ReadWrite.All application permission to the system-assigned Managed
-    Identity of the specified Azure Function App. This allows the Function App to read
-    and write any SharePoint site in the tenant.
+    Grants the Sites.ReadWrite.All and Files.Read.All application permissions to the system-assigned
+    Managed Identity of the specified Azure Function App. Sites.ReadWrite.All allows reading and
+    writing any SharePoint site in the tenant (including PATCH on listItem/fields for enrichment
+    write-back). Files.Read.All is required for @microsoft.graph.downloadUrl on DriveItems — Graph
+    does not honor Sites.ReadWrite.All alone for the download URL projection.
 
     PREREQUISITES:
       1. Azure CLI installed and authenticated: az login
@@ -80,6 +82,7 @@ Write-Host "  Connected."
 Write-Host "`n=== Permission Summary ===" -ForegroundColor Yellow
 Write-Host "  This script will grant the following application permissions to '$FunctionAppName':"
 Write-Host "    - Sites.ReadWrite.All  (read/write access to ALL SharePoint sites in the tenant)"
+Write-Host "    - Files.Read.All       (required for @microsoft.graph.downloadUrl on DriveItems)"
 Write-Host ""
 Write-Host "  These are tenant-wide permissions. Ensure you have authorization to grant them." -ForegroundColor Yellow
 
@@ -91,29 +94,31 @@ if (-not $Force) {
     }
 }
 
-# --- Step 3: Granting Graph API permission ---
-Write-Host "`n=== Step 3: Granting Graph API permission ===" -ForegroundColor Cyan
+# --- Step 3: Granting Graph API permissions ---
+Write-Host "`n=== Step 3: Granting Graph API permissions ===" -ForegroundColor Cyan
 
 $graphSp = Get-MgServicePrincipal -Filter "appId eq '00000003-0000-0000-c000-000000000000'"
-
-$role = $graphSp.AppRoles | Where-Object { $_.Value -eq "Sites.ReadWrite.All" }
-if (-not $role) {
-    throw "Could not find Graph API role: Sites.ReadWrite.All"
-}
-
 $existingAssignments = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $miObjectId
-$existing = $existingAssignments | Where-Object { $_.AppRoleId -eq $role.Id }
 
-if ($existing) {
-    Write-Host "  Sites.ReadWrite.All is already assigned. Skipping." -ForegroundColor Yellow
-} else {
-    New-MgServicePrincipalAppRoleAssignment `
-        -ServicePrincipalId $miObjectId `
-        -PrincipalId $miObjectId `
-        -ResourceId $graphSp.Id `
-        -AppRoleId $role.Id | Out-Null
+$rolesToGrant = @("Sites.ReadWrite.All", "Files.Read.All")
+foreach ($roleValue in $rolesToGrant) {
+    $role = $graphSp.AppRoles | Where-Object { $_.Value -eq $roleValue }
+    if (-not $role) {
+        throw "Could not find Graph API role: $roleValue"
+    }
 
-    Write-Host "  Granted: Sites.ReadWrite.All" -ForegroundColor Green
+    $existing = $existingAssignments | Where-Object { $_.AppRoleId -eq $role.Id }
+    if ($existing) {
+        Write-Host "  $roleValue is already assigned. Skipping." -ForegroundColor Yellow
+    } else {
+        New-MgServicePrincipalAppRoleAssignment `
+            -ServicePrincipalId $miObjectId `
+            -PrincipalId $miObjectId `
+            -ResourceId $graphSp.Id `
+            -AppRoleId $role.Id | Out-Null
+
+        Write-Host "  Granted: $roleValue" -ForegroundColor Green
+    }
 }
 
 # --- Step 4: Verify permissions ---
