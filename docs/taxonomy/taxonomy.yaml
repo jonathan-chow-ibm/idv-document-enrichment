@@ -209,9 +209,11 @@ metadata:
         is_freetext: true
       - field_name: acres
         sharepoint_column: "Acres"
+        value_type: number
         description: "Land acreage"
       - field_name: squareFootage
         sharepoint_column: "SquareFootage"
+        value_type: number
         description: "Building square footage"
       - field_name: landUse
         sharepoint_column: "LandUse"
@@ -230,12 +232,15 @@ metadata:
     transaction:
       - field_name: executionDate
         sharepoint_column: "ExecutionDate"
+        value_type: dateTime
         description: "Date the document was executed/signed"
       - field_name: effectiveDate
         sharepoint_column: "EffectiveDate"
+        value_type: dateTime
         description: "Effective date"
       - field_name: expirationDate
         sharepoint_column: "ExpirationDate"
+        value_type: dateTime
         description: "Expiration date (if applicable)"
       - field_name: seller
         sharepoint_column: "Seller"
@@ -255,6 +260,7 @@ metadata:
         is_freetext: true
       - field_name: closingDate
         sharepoint_column: "ClosingDate"
+        value_type: dateTime
         description: "Closing date"
       - field_name: purchasePrice
         sharepoint_column: "PurchasePrice"

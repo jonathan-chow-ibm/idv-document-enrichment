@@ -1,11 +1,14 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using IdvEnrichment.Functions.Models;
 using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Models.ODataErrors;
 using Microsoft.Graph.Sites.Item.Lists.Item.ContentTypes;
 using Microsoft.Graph.Sites.Item.Lists.Item.Items.Item.Fields;
 using Microsoft.Kiota.Abstractions;
@@ -22,45 +25,37 @@ public sealed class WriteMetadataActivity(
     // Content type name → id map, cached per driveId. See ADR-009.
     private static readonly ConcurrentDictionary<string, Lazy<Task<Dictionary<string, string>>>> ContentTypeCache = new();
 
-    // Taxonomy field_name values (camelCase) for content.universal fields; must stay in sync with
-    // docs/taxonomy/taxonomy.yaml. Anything not in this set falls through to TypeSpecificFields JSON.
-    private static readonly HashSet<string> UniversalFieldNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "documentStatus",
-        "counterparty",
-        "transactionType",
-    };
+    // A few explicit formats for likely AI output ("March 15, 2026", "3/15/2026") in case plain TryParse misses them.
+    private static readonly string[] DateTimeFormats =
+    [
+        "MMMM d, yyyy",
+        "MMM d, yyyy",
+        "M/d/yyyy",
+        "M/d/yy",
+        "yyyy-MM-dd",
+    ];
+
+    private static readonly Regex NumberUnitWordsPattern =
+        new(@"\b(acres?|square\s*feet|sq\.?\s*ft\.?|sf)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex NumberNoiseCharsPattern = new(@"[\$,\s]", RegexOptions.Compiled);
 
     private static string GetFieldValue(IReadOnlyDictionary<string, CategoryClassification>? fields, string name)
         => fields is not null && fields.TryGetValue(name, out var f) ? f.Value ?? string.Empty : string.Empty;
+
 
     [Function(nameof(WriteMetadata))]
     public async Task WriteMetadata(
         [ActivityTrigger] WriteMetadataInput input,
         CancellationToken ct = default)
     {
-        var result = input.Result;
-        var metadataFields = result.Metadata?.Fields;
+        var taxonomy = await taxonomyLoader.LoadAsync(ct);
 
-        // Content type PATCH first so type-specific columns are valid before the fields PATCH. Any failure
-        // is logged and swallowed — the fields PATCH still runs and the document lands on the default type.
-        await TrySetContentTypeAsync(input, ct);
+        // Content type PATCH first so type-specific columns are valid before the fields PATCH. Any Graph
+        // failure is logged and swallowed — the fields PATCH still runs and the document lands on the default type.
+        await TrySetContentTypeAsync(input, taxonomy, ct);
 
-        var fields = new FieldValueSet
-        {
-            AdditionalData = new Dictionary<string, object>
-            {
-                ["DocumentType"] = JsonSerializer.Serialize(result.TypeClassification.DocumentType).Trim('"'),
-                ["DocumentStatus"] = GetFieldValue(metadataFields, "documentStatus"),
-                ["Counterparty"] = GetFieldValue(metadataFields, "counterparty"),
-                ["TransactionType"] = GetFieldValue(metadataFields, "transactionType"),
-                ["AIConfidence"] = result.TypeClassification.Confidence,
-                ["AIProcessingStatus"] = result.RoutingDecision == RoutingDecision.Write ? "Classified" : "Under Review",
-                ["AIClassifiedDate"] = DateTimeOffset.UtcNow.ToString("o"),
-                ["SuggestedFields"] = JsonSerializer.Serialize(result.Metadata?.SuggestedFields),
-                ["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata }),
-            }
-        };
+        var fields = BuildFieldsPayload(input.Result, taxonomy, DateTimeOffset.UtcNow);
 
         // Graph SDK v5 does not expose the Fields sub-path via Drives.Items.ListItem;
         // use the raw-URL constructor on FieldsRequestBuilder to target the correct endpoint.
@@ -69,11 +64,116 @@ public sealed class WriteMetadataActivity(
         await fieldsBuilder.PatchAsync(fields, cancellationToken: ct);
     }
 
-    private async Task TrySetContentTypeAsync(WriteMetadataInput input, CancellationToken ct)
+    // Internal for testability: pure mapping from an EnrichmentResult + taxonomy to the SharePoint fields PATCH body.
+    internal static FieldValueSet BuildFieldsPayload(
+        EnrichmentResult result,
+        TaxonomyData taxonomy,
+        DateTimeOffset classifiedAt)
+    {
+        var metadataFields = result.Metadata?.Fields;
+
+        var data = new Dictionary<string, object>
+        {
+            ["DocumentType"] = JsonSerializer.Serialize(result.TypeClassification.DocumentType).Trim('"'),
+            ["AIConfidence"] = result.TypeClassification.Confidence,
+            ["AIProcessingStatus"] = result.RoutingDecision == RoutingDecision.Write ? "Classified" : "Under Review",
+            ["AIClassifiedDate"] = classifiedAt.ToString("o"),
+            ["SuggestedFields"] = JsonSerializer.Serialize(result.Metadata?.SuggestedFields),
+            ["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata }),
+        };
+
+        // Populate every taxonomy content column using the taxonomy's declared field_name → sharepoint_column
+        // mapping (e.g., parcelId → ParcelID). See ADR-009 for the schema-driven writeback rationale.
+        // Each value is converted per the column's SharePoint type; an unmatched Choice value or an unparseable
+        // DateTime/Number would otherwise cause Graph to reject the entire PATCH, so those are omitted instead.
+        foreach (var spec in taxonomy.ContentFields())
+        {
+            if (string.IsNullOrEmpty(spec.SharepointColumn))
+            {
+                continue;
+            }
+
+            var rawValue = GetFieldValue(metadataFields, spec.FieldName);
+
+            if (spec.AllowedValues.Count > 0)
+            {
+                if (TryMatchAllowedValue(spec.AllowedValues, rawValue, out var canonicalValue))
+                {
+                    data[spec.SharepointColumn] = canonicalValue;
+                }
+            }
+            else if (spec.ValueType == "dateTime")
+            {
+                if (TryParseDateTime(rawValue, out var dateValue))
+                {
+                    data[spec.SharepointColumn] = dateValue.ToString("o");
+                }
+            }
+            else if (spec.ValueType == "number")
+            {
+                if (TryParseNumber(rawValue, out var numberValue))
+                {
+                    data[spec.SharepointColumn] = numberValue;
+                }
+            }
+            else
+            {
+                data[spec.SharepointColumn] = rawValue;
+            }
+        }
+
+        return new FieldValueSet { AdditionalData = data };
+    }
+
+    // Case-insensitive match against a Choice column's allowed values; returns the allowed list's own casing
+    // so Graph sees an exact match regardless of how the AI extracted the value.
+    private static bool TryMatchAllowedValue(IReadOnlyList<string> allowedValues, string rawValue, out string canonicalValue)
+    {
+        foreach (var candidate in allowedValues)
+        {
+            if (string.Equals(candidate, rawValue, StringComparison.OrdinalIgnoreCase))
+            {
+                canonicalValue = candidate;
+                return true;
+            }
+        }
+
+        canonicalValue = string.Empty;
+        return false;
+    }
+
+    private static bool TryParseDateTime(string rawValue, out DateTimeOffset value)
+    {
+        const DateTimeStyles styles = DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal;
+
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            value = default;
+            return false;
+        }
+
+        return DateTimeOffset.TryParse(rawValue, CultureInfo.InvariantCulture, styles, out value)
+            || DateTimeOffset.TryParseExact(rawValue, DateTimeFormats, CultureInfo.InvariantCulture, styles, out value);
+    }
+
+    private static bool TryParseNumber(string rawValue, out double value)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            value = default;
+            return false;
+        }
+
+        var withoutUnitWords = NumberUnitWordsPattern.Replace(rawValue, string.Empty);
+        var cleaned = NumberNoiseCharsPattern.Replace(withoutUnitWords, string.Empty);
+        return double.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
+
+
+    private async Task TrySetContentTypeAsync(WriteMetadataInput input, TaxonomyData taxonomy, CancellationToken ct)
     {
         try
         {
-            var taxonomy = await taxonomyLoader.LoadAsync(ct);
             var group = taxonomy.GetGroupForDocumentType(input.Result.TypeClassification.DocumentType);
             if (string.IsNullOrWhiteSpace(group))
             {
@@ -105,7 +205,7 @@ public sealed class WriteMetadataActivity(
             requestInfo.SetContentFromParsable(graphClient.RequestAdapter, "application/json", body);
             await graphClient.RequestAdapter.SendNoContentAsync(requestInfo, cancellationToken: ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is ODataError or HttpRequestException)
         {
             logger.LogWarning(ex,
                 "Content type PATCH failed for item {ItemId} on drive {DriveId}; continuing with fields PATCH.",
@@ -113,40 +213,42 @@ public sealed class WriteMetadataActivity(
         }
     }
 
-    private Task<Dictionary<string, string>> GetContentTypeMapAsync(string driveId)
+    private async Task<Dictionary<string, string>> GetContentTypeMapAsync(string driveId)
     {
         var lazy = ContentTypeCache.GetOrAdd(driveId, id =>
             new Lazy<Task<Dictionary<string, string>>>(
                 () => LoadContentTypeMapAsync(id),
                 LazyThreadSafetyMode.ExecutionAndPublication));
-        return lazy.Value;
+        try
+        {
+            return await lazy.Value;
+        }
+        catch
+        {
+            // Lazy<Task<>> caches faulted Tasks and ConcurrentDictionary caches the Lazy, so a transient Graph
+            // failure would otherwise permanently disable content-type PATCH for this drive. Evict the entry so
+            // the next call retries. The KeyValuePair overload avoids racing with a concurrent successful reload.
+            ((ICollection<KeyValuePair<string, Lazy<Task<Dictionary<string, string>>>>>)ContentTypeCache)
+                .Remove(new KeyValuePair<string, Lazy<Task<Dictionary<string, string>>>>(driveId, lazy));
+            throw;
+        }
     }
 
     private async Task<Dictionary<string, string>> LoadContentTypeMapAsync(string driveId)
     {
         // CancellationToken.None: the map is process-wide cached; a single caller's cancellation
         // must not poison the cache for every subsequent document on the same drive.
-        try
+        var url = $"{GraphBaseUrl}/drives/{driveId}/list/contentTypes";
+        var builder = new ContentTypesRequestBuilder(url, graphClient.RequestAdapter);
+        var response = await builder.GetAsync(cancellationToken: CancellationToken.None);
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var contentType in response?.Value ?? [])
         {
-            var url = $"{GraphBaseUrl}/drives/{driveId}/list/contentTypes";
-            var builder = new ContentTypesRequestBuilder(url, graphClient.RequestAdapter);
-            var response = await builder.GetAsync(cancellationToken: CancellationToken.None);
-            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var contentType in response?.Value ?? [])
+            if (!string.IsNullOrEmpty(contentType.Name) && !string.IsNullOrEmpty(contentType.Id))
             {
-                if (!string.IsNullOrEmpty(contentType.Name) && !string.IsNullOrEmpty(contentType.Id))
-                {
-                    map[contentType.Name] = contentType.Id;
-                }
+                map[contentType.Name] = contentType.Id;
             }
-            return map;
         }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to load content types for drive {DriveId}; content type PATCH will be skipped for items on this drive.",
-                driveId);
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        }
+        return map;
     }
 }

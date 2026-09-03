@@ -54,6 +54,8 @@ public sealed class FieldSpec
     public bool IsFreetext { get; set; }
     public List<string> AllowedValues { get; set; } = [];
     public List<string> DecisionRules { get; set; } = [];
+    // Drives type-aware SharePoint write-back in WriteMetadataActivity; "text" (default), "dateTime", or "number".
+    public string ValueType { get; set; } = "text";
 }
 
 public sealed class ConfidenceThresholds
