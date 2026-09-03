@@ -58,9 +58,19 @@ var host = new HostBuilder()
 
         services.AddSingleton(_ =>
         {
-            var connectionString = context.Configuration["AzureWebJobsStorage"]
-                ?? throw new InvalidOperationException("AzureWebJobsStorage is not configured.");
-            return new TableServiceClient(connectionString);
+            var connectionString = context.Configuration["AzureWebJobsStorage"];
+            if (!string.IsNullOrEmpty(connectionString))
+            {
+                return new TableServiceClient(connectionString);
+            }
+
+            var accountName = context.Configuration["AzureWebJobsStorage:accountName"]
+                ?? throw new InvalidOperationException(
+                    "Storage is not configured. Set either 'AzureWebJobsStorage' (connection string) "
+                    + "or 'AzureWebJobsStorage__accountName' (identity-based) in configuration.");
+
+            return new TableServiceClient(
+                new Uri($"https://{accountName}.table.core.windows.net/"), credential);
         });
     })
     .Build();
