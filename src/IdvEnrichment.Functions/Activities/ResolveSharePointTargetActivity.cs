@@ -22,7 +22,11 @@ public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClie
         var drivesResponse = await graphClient.Sites[siteId].Drives.GetAsync(cancellationToken: ct);
         var drives = drivesResponse?.Value ?? [];
 
+        // Match on Graph display Name first (fast path when library was renamed to match, or when Name and
+        // URL segment coincide); fall back to matching against the drive's WebUrl path suffix, since the URL
+        // segment (e.g. "Shared Documents") and the display Name (e.g. "Documents") frequently differ.
         var drive = drives.FirstOrDefault(d => string.Equals(d.Name, libraryName, StringComparison.OrdinalIgnoreCase))
+            ?? drives.FirstOrDefault(d => DriveWebUrlEndsWithSegment(d.WebUrl, libraryName))
             ?? throw new InvalidOperationException(
                 $"Library '{libraryName}' not found in site '{siteName}'. " +
                 $"Available libraries: {string.Join(", ", drives.Select(d => d.Name))}");
@@ -35,14 +39,49 @@ public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClie
             LibraryName: drive.Name!);
     }
 
-    private static (string Hostname, string SitePath, string LibraryName, string? FolderPath) ParseSharePointUrl(string url)
+    internal static (string Hostname, string SitePath, string LibraryName, string? FolderPath) ParseSharePointUrl(string url)
     {
         var uri = new Uri(url);
         var hostname = uri.Host;
-        var segments = uri.AbsolutePath
-            .Split('/', StringSplitOptions.RemoveEmptyEntries)
-            .Select(Uri.UnescapeDataString)
-            .ToArray();
+
+        // The `id` query parameter (set by SharePoint when browsing library subfolders in the UI)
+        // is the authoritative server-relative path — prefer it when present.
+        var idParam = GetQueryParameter(uri.Query, "id");
+
+        string[] segments;
+        if (!string.IsNullOrWhiteSpace(idParam))
+        {
+            // GetQueryParameter already fully decoded idParam — split only, without a second decode pass
+            // (a folder name containing a literal "%25" would otherwise be misread as "%").
+            segments = idParam!.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        }
+        else
+        {
+            // uri.AbsolutePath is percent-encoded — split then decode each segment.
+            segments = uri.AbsolutePath
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.UnescapeDataString)
+                .ToArray();
+        }
+
+        // Reject SharePoint/OneDrive "Copy link" share URLs (e.g. https://tenant.sharepoint.com/:f:/s/SiteName/Ev1abc...).
+        // The leading ":x:" segment (any single-character discriminator: f/w/x/b/p/o/v/i/t/u/...) carries a sharing
+        // token, not a real site path, and would otherwise fail confusingly during the site lookup.
+        if (segments.Length > 0 && segments[0] is [':', _, ':'])
+        {
+            throw new ArgumentException(
+                "This looks like a SharePoint 'Copy link' share URL, which isn't supported. " +
+                "Please copy the URL directly from your browser's address bar while viewing the folder instead. " +
+                $"URL: {url}");
+        }
+
+        // Strip a trailing `Forms/<something>.aspx` pair added by the SharePoint browser UI.
+        if (segments.Length >= 2 &&
+            string.Equals(segments[^2], "Forms", StringComparison.OrdinalIgnoreCase) &&
+            segments[^1].EndsWith(".aspx", StringComparison.OrdinalIgnoreCase))
+        {
+            segments = segments[..^2];
+        }
 
         if (segments.Length < 3)
         {
@@ -50,11 +89,43 @@ public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClie
                 $"SharePoint URL must include a site and library (e.g. https://tenant.sharepoint.com/sites/SiteName/LibraryName): {url}");
         }
 
-        // segments: ["sites", "ActiveProjects", "Shared Documents", "2024"]
         var sitePath = $"/{segments[0]}/{segments[1]}";
         var libraryName = segments[2];
         var folderPath = segments.Length > 3 ? string.Join("/", segments.Skip(3)) : null;
 
         return (hostname, sitePath, libraryName, folderPath);
+    }
+
+    private static bool DriveWebUrlEndsWithSegment(string? webUrl, string segment)
+    {
+        if (string.IsNullOrEmpty(webUrl) || !Uri.TryCreate(webUrl, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        var decodedPath = Uri.UnescapeDataString(uri.AbsolutePath).TrimEnd('/');
+        return decodedPath.EndsWith("/" + segment, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetQueryParameter(string query, string name)
+    {
+        if (string.IsNullOrEmpty(query))
+        {
+            return null;
+        }
+
+        var trimmed = query.StartsWith('?') ? query[1..] : query;
+        foreach (var pair in trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            var key = eq < 0 ? pair : pair[..eq];
+            if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                var value = eq < 0 ? string.Empty : pair[(eq + 1)..];
+                return Uri.UnescapeDataString(value);
+            }
+        }
+
+        return null;
     }
 }

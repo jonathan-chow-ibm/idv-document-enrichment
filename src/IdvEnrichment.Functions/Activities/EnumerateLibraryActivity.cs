@@ -2,6 +2,7 @@ using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Models.ODataErrors;
 
 namespace IdvEnrichment.Functions.Activities;
 
@@ -22,6 +23,33 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
         [ActivityTrigger] ResolvedSharePointTarget target,
         CancellationToken ct = default)
     {
+        // Pre-check only the top-level folder path — a SharePoint `id` query param can resolve to a selected
+        // file rather than a folder, and calling .Children on a file surfaces an unhelpful Graph error. Recursive
+        // calls below are gated on `item.Folder is not null` from the parent listing, so they need no re-check.
+        if (target.FolderPath is not null)
+        {
+            DriveItem? item;
+            try
+            {
+                item = await graphClient.Drives[target.DriveId]
+                    .Items[$"root:/{target.FolderPath}:"]
+                    .GetAsync(cancellationToken: ct);
+            }
+            catch (ODataError ex) when (string.Equals(ex.Error?.Code, "itemNotFound", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"The folder path '{target.FolderPath}' was not found in library '{target.LibraryName}'. " +
+                    "Check the SharePoint URL for typos.");
+            }
+
+            if (item is null || item.Folder is null)
+            {
+                throw new InvalidOperationException(
+                    $"The resolved path '{target.FolderPath}' is a file, not a folder — " +
+                    "check the SharePoint URL you provided points to a folder, not a specific document.");
+            }
+        }
+
         var documents = new List<LibraryDocument>();
         await CollectDocumentsAsync(target.DriveId, target.FolderPath, documents, ct);
         return documents;
