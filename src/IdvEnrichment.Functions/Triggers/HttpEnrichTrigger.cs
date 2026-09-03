@@ -30,6 +30,14 @@ public sealed class HttpEnrichTrigger(
                 cfg => cfg.QueryParameters.Expand = ["listItem($expand=fields)"],
                 cancellationToken: ct);
 
+        if (driveItem?.Folder is not null)
+        {
+            var skipFolder = req.CreateResponse(System.Net.HttpStatusCode.OK);
+            await skipFolder.WriteStringAsync($"skipped: item {message.ItemId} is a folder, not a file", ct);
+            logger.LogInformation("Skipped folder item {ItemId} in drive {DriveId}", message.ItemId, message.DriveId);
+            return skipFolder;
+        }
+
         string? processingStatus = null;
         if (driveItem?.ListItem?.Fields?.AdditionalData is { } additionalData &&
             additionalData.TryGetValue("AIProcessingStatus", out var statusObj))
