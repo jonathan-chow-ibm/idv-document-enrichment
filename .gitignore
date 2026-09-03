@@ -57,6 +57,9 @@ venv/
 # Project folders follow "{STATE} {METRO} {Project}" naming — add new ones here as they land.
 TX DFW Risinger/
 TX HOU Flowserve/
+BatchTest-Subset/
+BatchTest-Subset2/
+BatchTest-Subset3/
 *.zip
 
 # Loose client documents dropped at the repo root (contracts, metadata requests, etc.)
