@@ -5,9 +5,7 @@ version: 1.1.1
 phase: Specify
 model:
   - Claude Sonnet 5 (copilot)
-  - Claude Sonnet 4.6 (copilot)
   - Claude Sonnet 4.5 (copilot)
-  - Claude Sonnet 4 (copilot)
 tools:
   - agent
   - read

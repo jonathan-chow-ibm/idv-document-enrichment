@@ -4,8 +4,8 @@ description: Create UI/UX designs, component styling, design tokens, and design 
 version: 1.1.1
 phase: Execute
 model:
-  - Gemini 2.5 Pro (copilot)
-  - Gemini 3 Flash (Preview) (copilot)
+  - Gemini 3.1 Pro (copilot)
+  - Gemini 3.7 Flash (copilot)
 tools:
   - read
   - search

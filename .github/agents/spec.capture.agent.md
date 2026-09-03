@@ -4,9 +4,8 @@ description: Convert a natural language feature description or feature brief int
 version: 1.1.1
 phase: Specify
 model:
-  - Claude Sonnet 4.6 (copilot)
+  - Claude Sonnet 5 (copilot)
   - Claude Sonnet 4.5 (copilot)
-  - Claude Sonnet 4 (copilot)
 tools:
   - read
   - search

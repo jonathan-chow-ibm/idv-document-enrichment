@@ -3,9 +3,8 @@ name: spec.utility.recover
 version: 1.1.1
 phase: Utility
 model:
-  - Claude Sonnet 4.6 (copilot)
+  - Claude Sonnet 5 (copilot)
   - Claude Sonnet 4.5 (copilot)
-  - Claude Sonnet 4 (copilot)
 description: Handles ADR violation recovery by running a max-2-round correction loop and escalating to the user with Options A/B/C if unresolved.
 tools:
   - read

@@ -4,9 +4,8 @@ description: Produce the technical implementation plan (plan.md, data-model.md, 
 version: 1.1.1
 phase: Plan
 model:
-  - Claude Sonnet 4.6 (copilot)
+  - Claude Sonnet 5 (copilot)
   - Claude Sonnet 4.5 (copilot)
-  - Claude Sonnet 4 (copilot)
 tools:
   - read
   - search

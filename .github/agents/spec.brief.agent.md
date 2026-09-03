@@ -4,9 +4,8 @@ description: Decompose a Feature Brief from a PRD for a single discrete feature 
 version: 1.1.1
 phase: Specify
 model:
-  - Claude Sonnet 4.6 (copilot)
+  - Claude Sonnet 5 (copilot)
   - Claude Sonnet 4.5 (copilot)
-  - Claude Sonnet 4 (copilot)
 tools:
   - read
   - search
