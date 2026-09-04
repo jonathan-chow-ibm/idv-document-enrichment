@@ -16,6 +16,7 @@ public sealed class ChunkOrchestrator
 
         var log = ctx.CreateReplaySafeLogger<ChunkOrchestrator>();
         var results = new List<BatchDocumentEntry>();
+        var failedDocuments = new List<FailedDocumentEntry>();
         var errors = 0;
 
         // Process documents in parallel groups bounded by maxConcurrency
@@ -26,7 +27,7 @@ public sealed class ChunkOrchestrator
             var tasks = group.Select(doc => ProcessDocSafeAsync(ctx, doc, input, log));
             var groupResults = await Task.WhenAll(tasks);
 
-            foreach (var (result, succeeded) in groupResults)
+            foreach (var (result, succeeded, failedDocument) in groupResults)
             {
                 if (succeeded)
                 {
@@ -35,14 +36,15 @@ public sealed class ChunkOrchestrator
                 else
                 {
                     errors++;
+                    failedDocuments.Add(failedDocument!);
                 }
             }
         }
 
-        return new ChunkResult(results, errors);
+        return new ChunkResult(results, errors, failedDocuments);
     }
 
-    private static async Task<(BatchDocumentEntry? Result, bool Succeeded)> ProcessDocSafeAsync(
+    private static async Task<(BatchDocumentEntry? Result, bool Succeeded, FailedDocumentEntry? FailedDocument)> ProcessDocSafeAsync(
         TaskOrchestrationContext ctx, LibraryDocument doc, ChunkRequest input, ILogger log)
     {
         try
@@ -73,7 +75,7 @@ public sealed class ChunkOrchestrator
                 result.ProcessingMetrics.ExtractionOutputTokens,
                 result.ProcessingMetrics.VisionInputTokens,
                 result.ProcessingMetrics.VisionOutputTokens,
-                result.Metadata?.SuggestedFields.Select(f => f.Key).ToList() ?? []), true);
+                result.Metadata?.SuggestedFields.Select(f => f.Key).ToList() ?? []), true, null);
         }
         catch (OperationCanceledException)
         {
@@ -82,12 +84,12 @@ public sealed class ChunkOrchestrator
         catch (TaskFailedException ex)
         {
             log.LogWarning(ex, "Document {DocId} failed after retries", doc.Id);
-            return (null, false);
+            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath));
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Unexpected error processing document {DocId}", doc.Id);
-            return (null, false);
+            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath));
         }
     }
 }

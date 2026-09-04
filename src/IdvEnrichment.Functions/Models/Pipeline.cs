@@ -21,7 +21,8 @@ public sealed record BatchRequest(
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("label")] string? Label = null,
     [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null,
-    [property: JsonPropertyName("chunkSize")] int? ChunkSize = null);
+    [property: JsonPropertyName("chunkSize")] int? ChunkSize = null,
+    [property: JsonPropertyName("itemIds")] IReadOnlyList<string>? ItemIds = null);
 
 /// <summary>Resolved SharePoint target returned by the resolve activity.</summary>
 public sealed record ResolvedSharePointTarget(

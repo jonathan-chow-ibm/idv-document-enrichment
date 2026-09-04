@@ -16,16 +16,22 @@ public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("visionOutputTokens")] int VisionOutputTokens = 0,
     [property: JsonPropertyName("suggestedFieldKeys")] IReadOnlyList<string> SuggestedFieldKeys = null!);
 
+public sealed record FailedDocumentEntry(
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName);
+
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
-    [property: JsonPropertyName("errors")] int Errors);
+    [property: JsonPropertyName("errors")] int Errors,
+    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments);
 
 public sealed record GenerateBatchReportInput(
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("url")] string Url,
     [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
-    [property: JsonPropertyName("errors")] int Errors);
+    [property: JsonPropertyName("errors")] int Errors,
+    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments);
 
 public sealed record BatchReport(
     [property: JsonPropertyName("batchId")] string BatchId,
@@ -36,7 +42,8 @@ public sealed record BatchReport(
     [property: JsonPropertyName("confidenceDistribution")] ConfidenceDistribution ConfidenceDistribution,
     [property: JsonPropertyName("documentTypeCounts")] IReadOnlyDictionary<string, int> DocumentTypeCounts,
     [property: JsonPropertyName("suggestedFieldsByGroup")] IReadOnlyList<SuggestedFieldsByGroup> SuggestedFieldsByGroup,
-    [property: JsonPropertyName("cost")] BatchCost Cost);
+    [property: JsonPropertyName("cost")] BatchCost Cost,
+    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments);
 
 public sealed record SuggestedFieldsByGroup(
     [property: JsonPropertyName("group")] string Group,

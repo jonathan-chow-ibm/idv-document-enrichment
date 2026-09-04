@@ -30,6 +30,8 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         var documents = await ctx.CallActivityAsync<IReadOnlyList<LibraryDocument>>(
             "EnumerateLibrary", target, retry);
 
+        documents = FilterByItemIds(documents, input.ItemIds);
+
         var unprocessed = await ctx.CallActivityAsync<IReadOnlyList<LibraryDocument>>(
             "FilterProcessed", new FilterProcessedInput(documents, batchId), retry);
 
@@ -59,10 +61,24 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
 
         var results = chunkResults.SelectMany(r => r.Results).ToList();
         var errors = chunkResults.Sum(r => r.Errors);
+        var failedDocuments = chunkResults.SelectMany(r => r.FailedDocuments).ToList();
 
         return await ctx.CallActivityAsync<BatchReport>(
             "GenerateBatchReport",
-            new GenerateBatchReportInput(batchId, input.Url, startedAt, results, errors),
+            new GenerateBatchReportInput(batchId, input.Url, startedAt, results, errors, failedDocuments),
             retry);
+    }
+
+    // Scopes a re-run to only the requested item IDs, e.g. retrying documents that failed in a prior batch.
+    internal static IReadOnlyList<LibraryDocument> FilterByItemIds(
+        IReadOnlyList<LibraryDocument> documents, IReadOnlyList<string>? itemIds)
+    {
+        if (itemIds is null || itemIds.Count == 0)
+        {
+            return documents;
+        }
+
+        var requestedIds = new HashSet<string>(itemIds, StringComparer.Ordinal);
+        return documents.Where(d => requestedIds.Contains(d.Id)).ToList();
     }
 }
