@@ -74,7 +74,7 @@ graph TB
 
 | Function | Type | Responsibility |
 |---|---|---|
-| `BatchProcessingOrchestrator` | Durable Orchestrator | Resolves SP target, enumerates library, filters processed, splits into chunks of `BatchChunkSize` (default 500), fans all chunks out in parallel via `Task.WhenAll`. History bounded to ~200 entries for 100K docs. |
+| `BatchProcessingOrchestrator` | Durable Orchestrator | Resolves SP target, enumerates library, filters processed, splits into chunks of `BatchChunkSize` (default 500), runs chunks sequentially (awaiting each sub-orchestration before starting the next) so real concurrent OpenAI load never exceeds `maxConcurrency` regardless of chunk count. History bounded to ~200 entries for 100K docs. |
 | `ChunkProcessingOrchestrator` | Durable Orchestrator | Receives a slice of documents. Processes them in parallel groups of `BatchMaxConcurrency` (default 10) via `Task.WhenAll`. Returns `ChunkResult` — slim `BatchDocumentEntry` projections (DocumentType + RoutingDecision only, no extracted text — avoids OOM at aggregation). |
 | `DocumentProcessingOrchestrator` | Durable Orchestrator | Sequences the full pipeline for a single document: GetDownloadUrl → ExtractContent → ClassifyType → confidence gate → ExtractMetadata → RouteResult → WriteMetadata → RecordProcessingResult. All activities retry 3× with exponential backoff. |
 

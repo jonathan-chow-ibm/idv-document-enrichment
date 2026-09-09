@@ -50,14 +50,19 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
 
         ctx.SetCustomStatus(new { Phase = "processing", Chunks = chunks.Count, Total = unprocessed.Count });
 
-        // Fan out all chunks in parallel; top-level history stays bounded to chunk count
-        var chunkTasks = chunks.Select(c =>
-            ctx.CallSubOrchestratorAsync<ChunkResult>(
+        // Run chunks sequentially so real concurrent OpenAI load never exceeds maxConcurrency
+        // regardless of chunk count (each chunk sub-orchestration re-applies maxConcurrency
+        // internally, so parallel chunks would multiply it). Top-level history still only
+        // records one "chunk started/completed" pair per chunk, same as before.
+        var chunkResults = new List<ChunkResult>(chunks.Count);
+        foreach (var c in chunks)
+        {
+            var chunkResult = await ctx.CallSubOrchestratorAsync<ChunkResult>(
                 "ChunkProcessingOrchestrator",
                 new ChunkRequest(c.Docs, batchId, target, maxConcurrency),
-                new SubOrchestrationOptions { InstanceId = $"{batchId}:chunk:{c.Index}" }));
-
-        var chunkResults = await Task.WhenAll(chunkTasks);
+                new SubOrchestrationOptions { InstanceId = $"{batchId}:chunk:{c.Index}" });
+            chunkResults.Add(chunkResult);
+        }
 
         var results = chunkResults.SelectMany(r => r.Results).ToList();
         var errors = chunkResults.Sum(r => r.Errors);
