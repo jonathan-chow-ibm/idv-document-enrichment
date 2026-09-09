@@ -1,6 +1,7 @@
 using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Graph;
+using Microsoft.Graph.Models;
 
 namespace IdvEnrichment.Functions.Activities;
 
@@ -22,14 +23,7 @@ public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClie
         var drivesResponse = await graphClient.Sites[siteId].Drives.GetAsync(cancellationToken: ct);
         var drives = drivesResponse?.Value ?? [];
 
-        // Match on Graph display Name first (fast path when library was renamed to match, or when Name and
-        // URL segment coincide); fall back to matching against the drive's WebUrl path suffix, since the URL
-        // segment (e.g. "Shared Documents") and the display Name (e.g. "Documents") frequently differ.
-        var drive = drives.FirstOrDefault(d => string.Equals(d.Name, libraryName, StringComparison.OrdinalIgnoreCase))
-            ?? drives.FirstOrDefault(d => DriveWebUrlEndsWithSegment(d.WebUrl, libraryName))
-            ?? throw new InvalidOperationException(
-                $"Library '{libraryName}' not found in site '{siteName}'. " +
-                $"Available libraries: {string.Join(", ", drives.Select(d => d.Name))}");
+        var drive = SelectDrive(drives, libraryName, siteName);
 
         return new ResolvedSharePointTarget(
             SiteId: siteId,
@@ -94,6 +88,20 @@ public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClie
         var folderPath = segments.Length > 3 ? string.Join("/", segments.Skip(3)) : null;
 
         return (hostname, sitePath, libraryName, folderPath);
+    }
+
+    // Match on the drive's WebUrl path suffix, not display Name. SharePoint guarantees URL slugs are
+    // unique per site (special characters like "-" get stripped/collision-suffixed at creation), so
+    // WebUrl matching can never be ambiguous — whereas Name matching can silently pick the WRONG
+    // library when one drive's URL-derived segment happens to equal a DIFFERENT drive's real display
+    // Name (e.g. a slug collision auto-suffixed with "1"). See incident: "Foo"/"Foo-" pair where "Foo-"'s
+    // URL segment is "Foo" (dash stripped), which exactly matched an unrelated "Foo" library's Name.
+    internal static Drive SelectDrive(IReadOnlyList<Drive> drives, string libraryName, string siteName)
+    {
+        return drives.FirstOrDefault(d => DriveWebUrlEndsWithSegment(d.WebUrl, libraryName))
+            ?? throw new InvalidOperationException(
+                $"Library '{libraryName}' not found in site '{siteName}'. " +
+                $"Available libraries: {string.Join(", ", drives.Select(d => d.Name))}");
     }
 
     private static bool DriveWebUrlEndsWithSegment(string? webUrl, string segment)

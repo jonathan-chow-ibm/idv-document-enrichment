@@ -1,4 +1,5 @@
 using IdvEnrichment.Functions.Activities;
+using Microsoft.Graph.Models;
 using Xunit;
 
 namespace IdvEnrichment.Functions.Tests;
@@ -96,5 +97,52 @@ public class ResolveSharePointTargetActivityTests
     public void ParseSharePointUrl_CopyLinkShareUrl_OtherFileTypeVariants_AlsoRejected(string url)
     {
         Assert.Throws<ArgumentException>(() => ResolveSharePointTargetActivity.ParseSharePointUrl(url));
+    }
+
+    [Fact]
+    public void SelectDrive_MatchesOnWebUrlSuffix_NotDisplayName()
+    {
+        // "Foo-"'s URL-safe slug drops the trailing dash, landing on "Foo" — which happens to be another
+        // library's literal display Name. WebUrl matching must resolve to "Foo-" (the one whose real URL
+        // this is), not "Foo" (whose Name merely coincides with the URL segment).
+        var drives = new List<Drive>
+        {
+            new() { Name = "Foo", WebUrl = "https://tenant.sharepoint.com/sites/SiteName/Foo1" },
+            new() { Name = "Foo-", WebUrl = "https://tenant.sharepoint.com/sites/SiteName/Foo" },
+        };
+
+        var result = ResolveSharePointTargetActivity.SelectDrive(drives, "Foo", "SiteName");
+
+        Assert.Equal("Foo-", result.Name);
+    }
+
+    [Fact]
+    public void SelectDrive_UrlSegmentWithAppendedSuffix_MatchesCorrectDrive()
+    {
+        var drives = new List<Drive>
+        {
+            new() { Name = "Foo", WebUrl = "https://tenant.sharepoint.com/sites/SiteName/Foo1" },
+            new() { Name = "Foo-", WebUrl = "https://tenant.sharepoint.com/sites/SiteName/Foo" },
+        };
+
+        var result = ResolveSharePointTargetActivity.SelectDrive(drives, "Foo1", "SiteName");
+
+        Assert.Equal("Foo", result.Name);
+    }
+
+    [Fact]
+    public void SelectDrive_NoWebUrlMatch_ThrowsWithAvailableLibraryNames()
+    {
+        var drives = new List<Drive>
+        {
+            new() { Name = "Documents", WebUrl = "https://tenant.sharepoint.com/sites/SiteName/Shared Documents" },
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => ResolveSharePointTargetActivity.SelectDrive(drives, "NotThere", "SiteName"));
+
+        Assert.Contains("NotThere", ex.Message);
+        Assert.Contains("SiteName", ex.Message);
+        Assert.Contains("Documents", ex.Message);
     }
 }
