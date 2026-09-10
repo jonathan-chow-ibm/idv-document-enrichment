@@ -14,6 +14,8 @@ public sealed class ExtractContentActivity(
     IHttpClientFactory httpClientFactory,
     ILogger<ExtractContentActivity> logger)
 {
+    private static readonly TimeSpan DocumentIntelligenceTimeout = TimeSpan.FromMinutes(5);
+
     [Function(nameof(ExtractContent))]
     public async Task<ExtractionResult> ExtractContent(
         [ActivityTrigger] ExtractContentInput input,
@@ -72,9 +74,24 @@ public sealed class ExtractContentActivity(
             OutputContentFormat = DocumentContentFormat.Markdown,
         };
 
+        // Bounds the call so a stalled/unresponsive service is treated as a failure (triggering the
+        // orchestrator's existing retry policy) instead of hanging indefinitely — DI runs can legitimately
+        // take longer than an LLM call on large scans, hence the longer timeout than OpenAiRetryHelper's.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(DocumentIntelligenceTimeout);
+
         var sw = Stopwatch.StartNew();
-        var operation = await docIntelClient.AnalyzeDocumentAsync(
-            WaitUntil.Completed, options, ct);
+        Operation<AnalyzeResult> operation;
+        try
+        {
+            operation = await docIntelClient.AnalyzeDocumentAsync(
+                WaitUntil.Completed, options, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Document Intelligence analysis did not complete within {DocumentIntelligenceTimeout.TotalMinutes} minutes for {input.FileName}.");
+        }
         sw.Stop();
 
         var result = operation.Value;

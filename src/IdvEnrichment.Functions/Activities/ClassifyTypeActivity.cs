@@ -32,7 +32,7 @@ public sealed class ClassifyTypeActivity(
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiMiniDeployment);
         var sw = Stopwatch.StartNew();
         var completion = await OpenAiRetryHelper.ExecuteWithRetryAsync(
-            () => chatClient.CompleteChatAsync(
+            callCt => chatClient.CompleteChatAsync(
                 [
                     new SystemChatMessage(systemPrompt),
                     new UserChatMessage(userPrompt),
@@ -41,7 +41,7 @@ public sealed class ClassifyTypeActivity(
                 {
                     ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
                 },
-                ct),
+                callCt),
             logger, ct);
 
         if (completion.Value.Content.Count == 0)

@@ -33,7 +33,7 @@ public sealed class ExtractMetadataActivity(
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiDeployment);
         var sw = Stopwatch.StartNew();
         var completion = await OpenAiRetryHelper.ExecuteWithRetryAsync(
-            () => chatClient.CompleteChatAsync(
+            callCt => chatClient.CompleteChatAsync(
                 [
                     new SystemChatMessage(systemPrompt),
                     new UserChatMessage(userPrompt),
@@ -45,7 +45,7 @@ public sealed class ExtractMetadataActivity(
                         schema,
                         jsonSchemaIsStrict: true),
                 },
-                ct),
+                callCt),
             logger, ct);
 
         var reason = completion.Value.FinishReason;

@@ -9,17 +9,26 @@ public static class OpenAiRetryHelper
     private const int MaxAttempts = 3;
     private const double MaxRetryAfterSeconds = 60;
 
-    /// <summary>Executes an OpenAI call, honouring Retry-After headers on 429s.</summary>
+    // Bounds each individual call attempt. Without this, a stalled connection or unresponsive endpoint
+    // hangs indefinitely — retries never engage because they only trigger on a thrown exception, and a
+    // hung call never throws. A live batch run stalled for hours on exactly this before this fix existed.
+    private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(90);
+
+    /// <summary>Executes an OpenAI call, honouring Retry-After headers on 429s and bounding each attempt
+    /// to <see cref="CallTimeout"/> so a hung call is treated as a retryable failure instead of hanging forever.</summary>
     public static async Task<T> ExecuteWithRetryAsync<T>(
-        Func<Task<T>> operation,
+        Func<CancellationToken, Task<T>> operation,
         ILogger logger,
         CancellationToken ct = default)
     {
         for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(CallTimeout);
+
             try
             {
-                return await operation();
+                return await operation(timeoutCts.Token);
             }
             catch (RequestFailedException ex) when (ex.Status == 429)
             {
@@ -36,6 +45,19 @@ public static class OpenAiRetryHelper
                     attempt, MaxAttempts, retryAfter, requestId ?? "unknown");
 
                 await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // timeoutCts fired, not the caller's own token — treat as a retryable, bounded failure.
+                if (attempt == MaxAttempts)
+                {
+                    throw new TimeoutException(
+                        $"OpenAI call did not complete within {CallTimeout.TotalSeconds}s (attempt {attempt}/{MaxAttempts}).");
+                }
+
+                logger.LogWarning(
+                    "OpenAI call timed out after {Seconds}s (attempt {Attempt}/{Max}); retrying",
+                    CallTimeout.TotalSeconds, attempt, MaxAttempts);
             }
         }
 
