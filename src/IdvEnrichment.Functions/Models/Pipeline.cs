@@ -14,7 +14,10 @@ public sealed record QueueMessage(
     [property: JsonPropertyName("modifiedDateTime")] DateTimeOffset ModifiedDateTime,
     [property: JsonPropertyName("source")] ProcessingSource Source,
     [property: JsonPropertyName("batchId")] string? BatchId = null,
-    [property: JsonPropertyName("attemptNumber")] int AttemptNumber = 1);
+    [property: JsonPropertyName("attemptNumber")] int AttemptNumber = 1,
+    // When true, the document is classified (and vision-overridden where applicable) and that
+    // classification is written back, but Agent 2 metadata extraction never runs.
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
 
 /// <summary>Input to kick off a batch run. Pass a SharePoint URL — can be a library or a folder within it.</summary>
 public sealed record BatchRequest(
@@ -22,7 +25,8 @@ public sealed record BatchRequest(
     [property: JsonPropertyName("label")] string? Label = null,
     [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null,
     [property: JsonPropertyName("chunkSize")] int? ChunkSize = null,
-    [property: JsonPropertyName("itemIds")] IReadOnlyList<string>? ItemIds = null);
+    [property: JsonPropertyName("itemIds")] IReadOnlyList<string>? ItemIds = null,
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
 
 /// <summary>Resolved SharePoint target returned by the resolve activity.</summary>
 public sealed record ResolvedSharePointTarget(
@@ -106,7 +110,12 @@ public sealed record ProcessingMetrics(
 
 // --- Activity Inputs ---
 
-public sealed record ExtractContentInput(string DocumentUrl, string FileName = "");
+public sealed record ExtractContentInput(
+    string DocumentUrl,
+    string FileName = "",
+    // When true, only the first page is read/analyzed — used by classify-only runs, where a
+    // representative first page is enough signal and a full-document pass would be wasted cost.
+    bool FirstPageOnly = false);
 
 public sealed record GetDocumentDownloadUrlInput(
     [property: JsonPropertyName("driveId")] string DriveId,
@@ -141,7 +150,8 @@ public sealed record ChunkRequest(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
-    [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency);
+    [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency,
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
 
 public sealed record ExtractDrawingDetailsInput(
     [property: JsonPropertyName("documentUrl")] string DocumentUrl,

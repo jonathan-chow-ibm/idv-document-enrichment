@@ -59,7 +59,7 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         {
             var chunkResult = await ctx.CallSubOrchestratorAsync<ChunkResult>(
                 "ChunkProcessingOrchestrator",
-                new ChunkRequest(c.Docs, batchId, target, maxConcurrency),
+                new ChunkRequest(c.Docs, batchId, target, maxConcurrency, input.ClassifyOnly),
                 new SubOrchestrationOptions { InstanceId = $"{batchId}:chunk:{c.Index}" });
             chunkResults.Add(chunkResult);
         }

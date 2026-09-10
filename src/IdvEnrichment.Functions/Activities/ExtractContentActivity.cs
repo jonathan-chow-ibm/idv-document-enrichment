@@ -138,7 +138,7 @@ public sealed class ExtractContentActivity(
         {
             using var document = PdfDocument.Open(stream);
 
-            if (document.NumberOfPages > LocalPdfParsingPageCap)
+            if (document.NumberOfPages > LocalPdfParsingPageCap && !input.FirstPageOnly)
             {
                 logger.LogWarning(
                     "{FileName} has {PageCount} pages, exceeding the local parsing cap of {PageCap}.",
@@ -148,9 +148,10 @@ public sealed class ExtractContentActivity(
                     : await ExtractWithDocumentIntelligenceAsync(input, ct);
             }
 
-            var pages = new List<PageTextInfo>(document.NumberOfPages);
+            var pageLimit = input.FirstPageOnly ? 1 : document.NumberOfPages;
+            var pages = new List<PageTextInfo>(pageLimit);
             var textBuilder = new StringBuilder();
-            foreach (var page in document.GetPages())
+            foreach (var page in document.GetPages().Take(pageLimit))
             {
                 if (textBuilder.Length > 0)
                 {
@@ -216,6 +217,7 @@ public sealed class ExtractContentActivity(
         var options = new AnalyzeDocumentOptions("prebuilt-layout", new Uri(input.DocumentUrl))
         {
             OutputContentFormat = DocumentContentFormat.Markdown,
+            Pages = input.FirstPageOnly ? "1" : null,
         };
 
         // Bounds the call so a stalled/unresponsive service is treated as a failure (triggering the

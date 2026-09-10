@@ -41,7 +41,9 @@ public sealed class DocumentOrchestrator
                 retry);
 
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
-                "ExtractContent", new ExtractContentInput(downloadUrl, message.FileName), extractContentRetry);
+                "ExtractContent",
+                new ExtractContentInput(downloadUrl, message.FileName, FirstPageOnly: message.ClassifyOnly),
+                extractContentRetry);
 
             if (extraction.IsUnsupported)
             {
@@ -166,7 +168,7 @@ public sealed class DocumentOrchestrator
             }
 
             MetadataExtractionResult? metadata = null;
-            if (!skipExtraction)
+            if (!skipExtraction && !message.ClassifyOnly)
             {
                 metadata = await ctx.CallActivityAsync<MetadataExtractionResult>(
                     "ExtractMetadata",
@@ -196,9 +198,14 @@ public sealed class DocumentOrchestrator
                 enrichmentResult = enrichmentResult with { WriteBackSucceeded = false };
             }
 
-            var status = enrichmentResult.RoutingDecision == RoutingDecision.Write && enrichmentResult.WriteBackSucceeded
-                ? "success"
-                : enrichmentResult.WriteBackSucceeded ? "review" : "write-back-failed";
+            // Classify-only runs never resolve to "success"/"review" — those are treated as durably
+            // terminal by FilterProcessed's cross-batch skip logic, and a test run must never block a
+            // real one from processing these documents later.
+            var status = !enrichmentResult.WriteBackSucceeded
+                ? "write-back-failed"
+                : message.ClassifyOnly
+                    ? "classified-only"
+                    : enrichmentResult.RoutingDecision == RoutingDecision.Write ? "success" : "review";
             try
             {
                 await ctx.CallActivityAsync(
