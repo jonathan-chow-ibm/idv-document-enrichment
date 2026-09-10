@@ -135,7 +135,7 @@ public sealed record RouteResultInput(
 
 public sealed record FilterProcessedInput(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
-    [property: JsonPropertyName("batchId")] string BatchId);
+    [property: JsonPropertyName("libraryKey")] string LibraryKey);
 
 public sealed record ChunkRequest(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
@@ -155,7 +155,8 @@ public sealed record WriteMetadataInput(
     [property: JsonPropertyName("result")] EnrichmentResult Result);
 
 public sealed record RecordProcessingResultInput(
-    [property: JsonPropertyName("batchId")] string BatchId,
+    [property: JsonPropertyName("libraryKey")] string LibraryKey,
     [property: JsonPropertyName("documentId")] string DocumentId,
-    [property: JsonPropertyName("status")] string Status);
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("batchId")] string? BatchId = null);
 

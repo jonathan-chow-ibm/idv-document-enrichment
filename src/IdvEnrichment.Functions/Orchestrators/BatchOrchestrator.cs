@@ -33,7 +33,7 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         documents = FilterByItemIds(documents, input.ItemIds);
 
         var unprocessed = await ctx.CallActivityAsync<IReadOnlyList<LibraryDocument>>(
-            "FilterProcessed", new FilterProcessedInput(documents, batchId), retry);
+            "FilterProcessed", new FilterProcessedInput(documents, target.DriveId), retry);
 
         log.LogInformation("Batch {BatchId}: {Total} documents to process", batchId, unprocessed.Count);
 

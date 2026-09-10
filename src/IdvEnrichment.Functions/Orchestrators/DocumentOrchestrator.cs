@@ -62,7 +62,7 @@ public sealed class DocumentOrchestrator
 
                 await ctx.CallActivityAsync(
                     "RecordProcessingResult",
-                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, "review"),
+                    new RecordProcessingResultInput(message.DriveId, message.DocumentId, "review", message.BatchId),
                     retry);
 
                 return unsupportedResult;
@@ -87,7 +87,7 @@ public sealed class DocumentOrchestrator
 
                 await ctx.CallActivityAsync(
                     "RecordProcessingResult",
-                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, "review"),
+                    new RecordProcessingResultInput(message.DriveId, message.DocumentId, "review", message.BatchId),
                     retry);
 
                 return tooLargeResult;
@@ -203,7 +203,7 @@ public sealed class DocumentOrchestrator
             {
                 await ctx.CallActivityAsync(
                     "RecordProcessingResult",
-                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, status),
+                    new RecordProcessingResultInput(message.DriveId, message.DocumentId, status, message.BatchId),
                     retry);
             }
             catch (TaskFailedException ex)
@@ -224,7 +224,7 @@ public sealed class DocumentOrchestrator
             {
                 await ctx.CallActivityAsync(
                     "RecordProcessingResult",
-                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, "error"),
+                    new RecordProcessingResultInput(message.DriveId, message.DocumentId, "error", message.BatchId),
                     retry);
             }
             catch (Exception recordEx)

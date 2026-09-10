@@ -16,9 +16,10 @@ public sealed class RecordProcessingResultActivity(TableServiceClient tableServi
         var tableClient = tableServiceClient.GetTableClient(TableName);
         await tableClient.CreateIfNotExistsAsync(ct);
 
-        var entity = new TableEntity(input.BatchId, input.DocumentId)
+        var entity = new TableEntity(input.LibraryKey, input.DocumentId)
         {
             ["Status"] = input.Status,
+            ["BatchId"] = input.BatchId,
             ["ProcessedAt"] = DateTimeOffset.UtcNow,
         };
 
