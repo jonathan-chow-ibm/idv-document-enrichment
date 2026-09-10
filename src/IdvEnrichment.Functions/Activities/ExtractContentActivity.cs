@@ -126,9 +126,17 @@ public sealed class ExtractContentActivity(
 
         var contentLength = response.Content.Headers.ContentLength ?? -1;
 
-        if (DecidePdfRoute(contentLength) == PdfSizeRoute.TooLargeForProcessing)
+        var route = DecidePdfRoute(contentLength, input.FirstPageOnly);
+        if (route == PdfSizeRoute.TooLargeForProcessing)
         {
             return ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0));
+        }
+
+        // FirstPageOnly + over the local-parsing cap: DI takes the URL directly and only analyzes
+        // page 1 (Pages="1"), so there's no need to download/open the file locally at all.
+        if (route == PdfSizeRoute.UseDocumentIntelligence)
+        {
+            return await ExtractWithDocumentIntelligenceAsync(input, ct);
         }
 
         using var stream = await response.Content.ReadAsStreamAsync(ct);
@@ -163,7 +171,7 @@ public sealed class ExtractContentActivity(
 
             if (!PdfDigitalDetector.IsBornDigital(pages))
             {
-                return ExceedsDocumentIntelligenceSizeCap(contentLength)
+                return ExceedsDocumentIntelligenceSizeCap(contentLength) && !input.FirstPageOnly
                     ? ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0))
                     : await ExtractWithDocumentIntelligenceAsync(input, ct);
             }
@@ -202,12 +210,17 @@ public sealed class ExtractContentActivity(
     // decide whether it's safe to attempt local PdfPig parsing, or whether it should be routed straight
     // to review without incurring any download or DI cost. Unavailable content-length (-1) is treated
     // conservatively, the same as exceeding the cap, since size can't be verified either way.
-    internal static PdfSizeRoute DecidePdfRoute(long contentLength) =>
+    // When firstPageOnly is set, the DI cost/timeout risk these caps guard against doesn't apply — DI
+    // is bounded to page 1 regardless of the file's total size — so oversized files route to DI instead
+    // of giving up.
+    internal static PdfSizeRoute DecidePdfRoute(long contentLength, bool firstPageOnly = false) =>
         contentLength >= 0 && contentLength <= LocalPdfParsingSizeCapBytes
             ? PdfSizeRoute.AttemptLocalParsing
-            : ExceedsDocumentIntelligenceSizeCap(contentLength)
-                ? PdfSizeRoute.TooLargeForProcessing
-                : PdfSizeRoute.UseDocumentIntelligence;
+            : firstPageOnly
+                ? PdfSizeRoute.UseDocumentIntelligence
+                : ExceedsDocumentIntelligenceSizeCap(contentLength)
+                    ? PdfSizeRoute.TooLargeForProcessing
+                    : PdfSizeRoute.UseDocumentIntelligence;
 
     private static bool ExceedsDocumentIntelligenceSizeCap(long contentLength) =>
         contentLength < 0 || contentLength > DocumentIntelligenceSizeCapBytes;
