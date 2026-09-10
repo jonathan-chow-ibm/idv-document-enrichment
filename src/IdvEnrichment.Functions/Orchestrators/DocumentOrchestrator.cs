@@ -21,6 +21,18 @@ public sealed class DocumentOrchestrator
             firstRetryInterval: TimeSpan.FromSeconds(5),
             backoffCoefficient: 2.0));
 
+        // A timeout means DI already ran (or is still running) the analysis and will be billed for it
+        // regardless of whether we saw the result — retrying would submit a brand-new billable job on top
+        // of one that may still be in progress, tripling cost on the slowest documents for no real chance
+        // of success. Genuine transient failures (429s, network blips) still get the normal 3x retry.
+        var extractContentRetry = TaskOptions.FromRetryPolicy(new RetryPolicy(
+            maxNumberOfAttempts: 3,
+            firstRetryInterval: TimeSpan.FromSeconds(5),
+            backoffCoefficient: 2.0)
+        {
+            HandleFailure = failure => !failure.IsCausedBy<TimeoutException>(),
+        });
+
         try
         {
             var downloadUrl = await ctx.CallActivityAsync<string>(
@@ -29,7 +41,7 @@ public sealed class DocumentOrchestrator
                 retry);
 
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
-                "ExtractContent", new ExtractContentInput(downloadUrl, message.FileName), retry);
+                "ExtractContent", new ExtractContentInput(downloadUrl, message.FileName), extractContentRetry);
 
             if (extraction.IsUnsupported)
             {
