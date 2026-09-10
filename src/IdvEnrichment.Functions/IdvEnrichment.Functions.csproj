@@ -40,6 +40,8 @@
 
     <PackageReference Include="Handlebars.Net" Version="2.4.3" />
 
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+
     <PackageReference Include="SkiaSharp" Version="3.116.1" />
 
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.116.1" />

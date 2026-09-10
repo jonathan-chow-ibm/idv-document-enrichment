@@ -61,6 +61,7 @@ public sealed record ExtractionResult(
     [property: JsonPropertyName("durationMs")] int DurationMs = 0)
 {
     private const string UnsupportedMethod = "unsupported";
+    private const string TooLargeMethod = "too-large";
 
     // Sentinel for formats that cannot be parsed; routes the document to human review.
     public static ExtractionResult UnsupportedFormat(string fileName) =>
@@ -68,7 +69,14 @@ public sealed record ExtractionResult(
             PageCount: 0, TextLength: 0, KeyValuePairs: [], Language: "unknown",
             ExtractionMethod: UnsupportedMethod);
 
+    // Sentinel for files too large to safely process locally or economically via DI; routes to human review.
+    public static ExtractionResult TooLargeForProcessing(string fileName, long sizeBytes) =>
+        new(Text: $"[File too large for automatic processing: {Path.GetExtension(fileName)}, {sizeBytes / (1024 * 1024)} MB]",
+            PageCount: 0, TextLength: 0, KeyValuePairs: [], Language: "unknown",
+            ExtractionMethod: TooLargeMethod);
+
     public bool IsUnsupported => ExtractionMethod == UnsupportedMethod;
+    public bool IsTooLarge => ExtractionMethod == TooLargeMethod;
 }
 
 /// <summary>Combined output from the full two-agent pipeline.</summary>

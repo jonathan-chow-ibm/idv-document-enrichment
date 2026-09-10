@@ -56,6 +56,31 @@ public sealed class DocumentOrchestrator
                 return unsupportedResult;
             }
 
+            if (extraction.IsTooLarge)
+            {
+                var tooLargeResult = new EnrichmentResult(
+                    DocumentId: message.DocumentId,
+                    FileName: message.FileName,
+                    Extraction: extraction,
+                    TypeClassification: new TypeClassificationResult(DocumentType.Other, 0.0, "File too large for automatic processing"),
+                    Metadata: null,
+                    ProcessingMetrics: new ProcessingMetrics(),
+                    RoutingDecision: RoutingDecision.Review,
+                    LowConfidenceCategories: ["size"]);
+
+                await ctx.CallActivityAsync(
+                    "WriteMetadata",
+                    new WriteMetadataInput(message.SiteId, message.DriveId, message.ItemId, tooLargeResult),
+                    retry);
+
+                await ctx.CallActivityAsync(
+                    "RecordProcessingResult",
+                    new RecordProcessingResultInput(message.BatchId ?? message.DocumentId, message.DocumentId, "review"),
+                    retry);
+
+                return tooLargeResult;
+            }
+
             var typeClassification = await ctx.CallActivityAsync<TypeClassificationResult>(
                 "ClassifyType",
                 new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
