@@ -59,7 +59,31 @@ public sealed class ExtractContentActivity(
             return await ExtractPdfAsync(input, ct);
         }
 
+        if (Path.GetExtension(input.FileName).Equals(".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExtractPlainTextAsync(input, ct);
+        }
+
         return await ExtractWithDocumentIntelligenceAsync(input, ct);
+    }
+
+    private async Task<ExtractionResult> ExtractPlainTextAsync(ExtractContentInput input, CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var client = httpClientFactory.CreateClient("spreadsheet");
+        using var response = await client.GetAsync(input.DocumentUrl, ct);
+        response.EnsureSuccessStatusCode();
+        var text = await response.Content.ReadAsStringAsync(ct);
+        sw.Stop();
+
+        return new ExtractionResult(
+            Text: text,
+            PageCount: 1,
+            TextLength: text.Length,
+            KeyValuePairs: [],
+            Language: "unknown",
+            ExtractionMethod: "plaintext",
+            DurationMs: (int)sw.Elapsed.TotalMilliseconds);
     }
 
     private async Task<ExtractionResult> ExtractSpreadsheetAsync(ExtractContentInput input, CancellationToken ct)

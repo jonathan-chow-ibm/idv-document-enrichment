@@ -15,7 +15,7 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
 
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".pdf", ".docx", ".doc", ".xlsx", ".xlsm", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".msg"
+        ".pdf", ".docx", ".xlsx", ".xlsm", ".pptx", ".txt"
     };
 
     [Function(nameof(EnumerateLibrary))]
