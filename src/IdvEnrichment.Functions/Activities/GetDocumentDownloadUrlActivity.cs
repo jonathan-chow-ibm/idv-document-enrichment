@@ -3,6 +3,7 @@ using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
+using System.Net;
 using System.Net.Http.Headers;
 
 namespace IdvEnrichment.Functions.Activities;
@@ -57,13 +58,21 @@ public sealed class GetDocumentDownloadUrlActivity(
         // Document Intelligence call. Any failure here falls back to the original file, unconverted.
         try
         {
-            var convertedUrl = await TryConvertToPdfAsync(input.DriveId, input.ItemId, ct);
-            if (!string.IsNullOrEmpty(convertedUrl))
+            var conversion = await TryConvertToPdfAsync(input.DriveId, input.ItemId, ct);
+            if (!string.IsNullOrEmpty(conversion.Url))
             {
-                return new DocumentDownloadResult(convertedUrl, IsConvertedToPdf: true);
+                return new DocumentDownloadResult(conversion.Url, IsConvertedToPdf: true);
             }
+
+            // Graph answered but didn't hand back the redirect the conversion is read from. Staying
+            // silent here would let a tenant-wide breakage (permissions, licensing, API deprecation)
+            // quietly revert every Office document to full Document Intelligence cost with no signal
+            // that it happened.
+            logger.LogWarning(
+                "Graph PDF conversion for item {ItemId} returned {StatusCode} with no redirect location; falling back to the original file.",
+                input.ItemId, conversion.StatusCode);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Graph PDF conversion failed for item {ItemId}; falling back to the original file.", input.ItemId);
         }
@@ -71,7 +80,11 @@ public sealed class GetDocumentDownloadUrlActivity(
         return new DocumentDownloadResult(downloadUrl, IsConvertedToPdf: false);
     }
 
-    private async Task<string?> TryConvertToPdfAsync(string driveId, string itemId, CancellationToken ct)
+    // Url is null unless Graph answered with the 302 the converted file is served from; StatusCode is
+    // carried out so a missing redirect can be logged with the reason instead of failing silently.
+    internal readonly record struct PdfConversionAttempt(string? Url, HttpStatusCode StatusCode);
+
+    internal async Task<PdfConversionAttempt> TryConvertToPdfAsync(string driveId, string itemId, CancellationToken ct)
     {
         var token = await tokenCredential.GetTokenAsync(new TokenRequestContext(GraphScopes), ct);
 
@@ -83,7 +96,7 @@ public sealed class GetDocumentDownloadUrlActivity(
 
         using var response = await client.SendAsync(request, ct);
 
-        return response.Headers.Location?.ToString();
+        return new PdfConversionAttempt(response.Headers.Location?.ToString(), response.StatusCode);
     }
 
     // Only .docx/.pptx are reachable today per EnumerateLibraryActivity's SupportedExtensions allow-list,
