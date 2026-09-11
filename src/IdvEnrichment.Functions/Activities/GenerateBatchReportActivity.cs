@@ -34,6 +34,8 @@ public sealed class GenerateBatchReportActivity(
             .GroupBy(r => JsonSerializer.Serialize(r.DocumentType).Trim('"'))
             .ToDictionary(g => g.Key, g => g.Count());
 
+        var sizeByDocumentType = BuildSizeByDocumentType(input.Results);
+
         var taxonomy = await taxonomyLoader.LoadAsync(ct);
 
         var suggestedFieldsByGroup = input.Results
@@ -87,7 +89,8 @@ public sealed class GenerateBatchReportActivity(
                 VisionTokens: new TokenUsage(visionInputTokens, visionOutputTokens),
                 EstimatedTotalUsd: 0m),
             FailedDocuments: input.FailedDocuments,
-            LowConfidenceClassifications: input.LowConfidenceClassifications);
+            LowConfidenceClassifications: input.LowConfidenceClassifications,
+            SizeByDocumentType: sizeByDocumentType);
 
         if (reportContainer is not null)
         {
@@ -117,6 +120,53 @@ public sealed class GenerateBatchReportActivity(
         await htmlBlob.UploadAsync(new BinaryData(htmlBytes), new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "text/html; charset=utf-8" } }, ct);
 
         logger.LogInformation("Batch report written to {Prefix}", prefix);
+    }
+
+    // Internal for testability: groups results by document type to compute size totals/averages for the report.
+    internal static IReadOnlyList<DocumentTypeSizeStats> BuildSizeByDocumentType(IReadOnlyList<BatchDocumentEntry> results)
+    {
+        return results
+            .GroupBy(r => JsonSerializer.Serialize(r.DocumentType).Trim('"'))
+            .OrderByDescending(g => g.Count())
+            .Select(g =>
+            {
+                var count = g.Count();
+                var totalSizeBytes = g.Sum(r => r.SizeBytes);
+                var averageSizeBytes = count > 0 ? totalSizeBytes / count : 0;
+                return new DocumentTypeSizeStats(
+                    DocumentType: g.Key,
+                    DocumentCount: count,
+                    TotalSizeBytes: totalSizeBytes,
+                    AverageSizeBytes: averageSizeBytes,
+                    TotalSizeFormatted: FormatBytes(totalSizeBytes),
+                    AverageSizeFormatted: FormatBytes(averageSizeBytes));
+            })
+            .ToList();
+    }
+
+    // Internal for testability: binary (1024-based) unit formatting for byte counts shown in the report.
+    internal static string FormatBytes(long bytes)
+    {
+        const long Kb = 1024;
+        const long Mb = Kb * 1024;
+        const long Gb = Mb * 1024;
+
+        if (bytes < Kb)
+        {
+            return $"{bytes} B";
+        }
+
+        if (bytes < Mb)
+        {
+            return $"{bytes / (double)Kb:F2} KB";
+        }
+
+        if (bytes < Gb)
+        {
+            return $"{bytes / (double)Mb:F2} MB";
+        }
+
+        return $"{bytes / (double)Gb:F2} GB";
     }
 
     private static string BuildHtmlReport(BatchReport r, GenerateBatchReportInput input)
@@ -165,11 +215,14 @@ public sealed class GenerateBatchReportActivity(
         sb.AppendLine($"<p>High (&ge;85%): <strong>{r.ConfidenceDistribution.High:N0}</strong> &nbsp; Medium (70\u201385%): <strong>{r.ConfidenceDistribution.Medium:N0}</strong> &nbsp; Low (&lt;70%): <strong>{r.ConfidenceDistribution.Low:N0}</strong></p>");
         sb.AppendLine($"<div class=\"bar\"><div class=\"bar-high\" style=\"width:{highPct:F1}%\" title=\"High\"></div><div class=\"bar-med\" style=\"width:{medPct:F1}%\" title=\"Medium\"></div><div class=\"bar-low\" style=\"width:{lowPct:F1}%\" title=\"Low\"></div></div>");
 
-        sb.AppendLine("<h2>Document Type Breakdown</h2><table><thead><tr><th>Document Type</th><th>Count</th><th>% of Total</th></tr></thead><tbody>");
+        sb.AppendLine("<h2>Document Type Breakdown</h2><table><thead><tr><th>Document Type</th><th>Count</th><th>% of Total</th><th>Total Size</th><th>Avg Size</th></tr></thead><tbody>");
         foreach (var (type, count) in r.DocumentTypeCounts.OrderByDescending(x => x.Value))
         {
             var pct = total > 0 ? count * 100.0 / total : 0;
-            sb.AppendLine($"<tr><td>{type}</td><td>{count:N0}</td><td>{pct:F1}%</td></tr>");
+            var sizeStats = r.SizeByDocumentType.FirstOrDefault(s => s.DocumentType == type);
+            var totalSize = sizeStats?.TotalSizeFormatted ?? "\u2014";
+            var avgSize = sizeStats?.AverageSizeFormatted ?? "\u2014";
+            sb.AppendLine($"<tr><td>{type}</td><td>{count:N0}</td><td>{pct:F1}%</td><td>{totalSize}</td><td>{avgSize}</td></tr>");
         }
         sb.AppendLine("</tbody></table>");
         if (r.SuggestedFieldsByGroup.Count > 0)

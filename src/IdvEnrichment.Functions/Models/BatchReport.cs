@@ -14,7 +14,8 @@ public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0,
     [property: JsonPropertyName("visionInputTokens")] int VisionInputTokens = 0,
     [property: JsonPropertyName("visionOutputTokens")] int VisionOutputTokens = 0,
-    [property: JsonPropertyName("suggestedFieldKeys")] IReadOnlyList<string> SuggestedFieldKeys = null!);
+    [property: JsonPropertyName("suggestedFieldKeys")] IReadOnlyList<string> SuggestedFieldKeys = null!,
+    [property: JsonPropertyName("sizeBytes")] long SizeBytes = 0);
 
 public sealed record FailedDocumentEntry(
     [property: JsonPropertyName("documentId")] string DocumentId,
@@ -39,6 +40,14 @@ public sealed record ChunkResult(
     [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments,
     [property: JsonPropertyName("lowConfidenceClassifications")] IReadOnlyList<LowConfidenceClassificationEntry> LowConfidenceClassifications);
 
+public sealed record DocumentTypeSizeStats(
+    [property: JsonPropertyName("documentType")] string DocumentType,
+    [property: JsonPropertyName("documentCount")] int DocumentCount,
+    [property: JsonPropertyName("totalSizeBytes")] long TotalSizeBytes,
+    [property: JsonPropertyName("averageSizeBytes")] long AverageSizeBytes,
+    [property: JsonPropertyName("totalSizeFormatted")] string TotalSizeFormatted,
+    [property: JsonPropertyName("averageSizeFormatted")] string AverageSizeFormatted);
+
 public sealed record GenerateBatchReportInput(
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("url")] string Url,
@@ -59,7 +68,8 @@ public sealed record BatchReport(
     [property: JsonPropertyName("suggestedFieldsByGroup")] IReadOnlyList<SuggestedFieldsByGroup> SuggestedFieldsByGroup,
     [property: JsonPropertyName("cost")] BatchCost Cost,
     [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments,
-    [property: JsonPropertyName("lowConfidenceClassifications")] IReadOnlyList<LowConfidenceClassificationEntry> LowConfidenceClassifications);
+    [property: JsonPropertyName("lowConfidenceClassifications")] IReadOnlyList<LowConfidenceClassificationEntry> LowConfidenceClassifications,
+    [property: JsonPropertyName("sizeByDocumentType")] IReadOnlyList<DocumentTypeSizeStats> SizeByDocumentType);
 
 public sealed record SuggestedFieldsByGroup(
     [property: JsonPropertyName("group")] string Group,

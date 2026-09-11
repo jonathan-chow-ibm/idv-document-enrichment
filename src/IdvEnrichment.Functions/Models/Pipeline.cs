@@ -42,7 +42,8 @@ public sealed record LibraryDocument(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("mimeType")] string MimeType,
     [property: JsonPropertyName("lastModifiedDateTime")] DateTimeOffset LastModifiedDateTime,
-    [property: JsonPropertyName("folderPath")] string? FolderPath = null)
+    [property: JsonPropertyName("folderPath")] string? FolderPath = null,
+    [property: JsonPropertyName("size")] long Size = 0)
 {
     // Relative path shown to the AI agents: includes folder context for better classification
     public string RelativePath => FolderPath is null ? Name : $"{FolderPath}/{Name}";

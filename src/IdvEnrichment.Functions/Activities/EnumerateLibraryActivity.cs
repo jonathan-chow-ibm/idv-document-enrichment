@@ -10,7 +10,7 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
 {
     private static readonly string[] SelectFields =
     [
-        "id", "name", "file", "folder", "lastModifiedDateTime"
+        "id", "name", "file", "folder", "lastModifiedDateTime", "size"
     ];
 
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -95,7 +95,8 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
                         Name: item.Name!,
                         MimeType: item.File?.MimeType ?? "application/octet-stream",
                         LastModifiedDateTime: item.LastModifiedDateTime ?? DateTimeOffset.MinValue,
-                        FolderPath: folderPath));
+                        FolderPath: folderPath,
+                        Size: item.Size ?? 0));
                 }
 
                 return true;

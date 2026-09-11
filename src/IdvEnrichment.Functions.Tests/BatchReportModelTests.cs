@@ -109,7 +109,8 @@ public class BatchReportModelTests
             SuggestedFieldsByGroup: [],
             Cost: new BatchCost(0m, new TokenUsage(0, 0), new TokenUsage(0, 0), new TokenUsage(0, 0), 0m),
             FailedDocuments: [new FailedDocumentEntry("doc-1", "a.pdf")],
-            LowConfidenceClassifications: []);
+            LowConfidenceClassifications: [],
+            SizeByDocumentType: []);
 
         var json = JsonSerializer.Serialize(report);
 
