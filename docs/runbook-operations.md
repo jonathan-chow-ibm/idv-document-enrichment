@@ -155,8 +155,16 @@ func azure functionapp publish func-idv-doc-enrich-dev
 Bicep provisions the OpenAI + Doc Intelligence resources, storage, the Function App, and RBAC
 (OpenAI User, Cognitive Services User, Key Vault Secrets User, and Storage Blob/Queue/Table).
 
-⚠️ **`HttpTestTrigger` and `SpikeDrawingRenderTrigger` are `AuthorizationLevel.Anonymous`.** If they're in
-the publish package they become open endpoints in Azure. Exclude or gate them before a real deployment.
+Both previously-anonymous triggers (`HttpTestTrigger`, `SpikeDrawingRenderTrigger`) have been removed;
+every remaining HTTP function is `AuthorizationLevel.Function`. To confirm before any publish:
+
+```bash
+grep -o '"authLevel": "[^"]*"' src/IdvEnrichment.Functions/bin/Debug/net10.0/functions.metadata | sort -u
+```
+
+⚠️ Check the **built metadata**, not the source. `.funcignore` and `.gitignore` do not gate a compiled
+isolated worker — any `.cs` file left in the project directory is compiled into the assembly and
+registered as a live function even when it is excluded from git and from the upload payload.
 
 ---
 
