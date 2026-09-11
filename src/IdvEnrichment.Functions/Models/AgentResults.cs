@@ -8,7 +8,15 @@ public sealed record TypeClassificationResult(
     [property: JsonPropertyName("reasoning")] string Reasoning,
     [property: JsonPropertyName("inputTokens")] int InputTokens = 0,
     [property: JsonPropertyName("outputTokens")] int OutputTokens = 0,
-    [property: JsonPropertyName("durationMs")] int DurationMs = 0);
+    [property: JsonPropertyName("durationMs")] int DurationMs = 0,
+    // Populated by Agent 1 only when it couldn't confidently settle on one type -- alternative
+    // types it considered, so "Other"/low-confidence results are actionable instead of a dead end.
+    [property: JsonPropertyName("candidates")] IReadOnlyList<ClassificationCandidate>? Candidates = null);
+
+/// <summary>An alternative document type Agent 1 considered but didn't settle on.</summary>
+public sealed record ClassificationCandidate(
+    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
+    [property: JsonPropertyName("confidence")] double Confidence);
 
 /// <summary>Extraction result for a single metadata field.</summary>
 public sealed record CategoryClassification(

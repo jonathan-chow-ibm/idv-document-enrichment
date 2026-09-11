@@ -16,6 +16,9 @@ Your task is to classify the document into exactly one of the following types.
 2. Classify by document FORMAT, not by the deal type it relates to.
 3. A lease proposal in letter format is "Letter of Intent", not "Lease".
 4. If no type clearly applies, use "Other".
+5. If your confidence is below 0.7, or you classified as "Other", include up to 3 alternative
+   types you considered in "candidates", each with its own confidence. Otherwise omit
+   "candidates" or return an empty array.
 
 ## Output Format
 
@@ -24,5 +27,8 @@ Respond with a JSON object:
 {
   "documentType": "<one of the types listed above>",
   "confidence": <float 0.0-1.0>,
-  "reasoning": "<1-2 sentence explanation>"
+  "reasoning": "<1-2 sentence explanation>",
+  "candidates": [
+    { "documentType": "<an alternative type you considered>", "confidence": <float 0.0-1.0> }
+  ]
 }

@@ -67,10 +67,11 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         var results = chunkResults.SelectMany(r => r.Results).ToList();
         var errors = chunkResults.Sum(r => r.Errors);
         var failedDocuments = chunkResults.SelectMany(r => r.FailedDocuments).ToList();
+        var lowConfidenceClassifications = chunkResults.SelectMany(r => r.LowConfidenceClassifications).ToList();
 
         return await ctx.CallActivityAsync<BatchReport>(
             "GenerateBatchReport",
-            new GenerateBatchReportInput(batchId, input.Url, startedAt, results, errors, failedDocuments),
+            new GenerateBatchReportInput(batchId, input.Url, startedAt, results, errors, failedDocuments, lowConfidenceClassifications),
             retry);
     }
 

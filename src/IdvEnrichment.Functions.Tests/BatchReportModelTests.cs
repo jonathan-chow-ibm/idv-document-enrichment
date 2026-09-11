@@ -68,7 +68,8 @@ public class BatchReportModelTests
             DocumentTypeCounts: new Dictionary<string, int>(),
             SuggestedFieldsByGroup: [],
             Cost: new BatchCost(0m, new TokenUsage(0, 0), new TokenUsage(0, 0), new TokenUsage(0, 0), 0m),
-            FailedDocuments: [new FailedDocumentEntry("doc-1", "a.pdf")]);
+            FailedDocuments: [new FailedDocumentEntry("doc-1", "a.pdf")],
+            LowConfidenceClassifications: []);
 
         var json = JsonSerializer.Serialize(report);
 

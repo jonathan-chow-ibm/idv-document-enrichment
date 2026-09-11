@@ -20,10 +20,24 @@ public sealed record FailedDocumentEntry(
     [property: JsonPropertyName("documentId")] string DocumentId,
     [property: JsonPropertyName("fileName")] string FileName);
 
+public sealed record ClassificationCandidateEntry(
+    [property: JsonPropertyName("documentType")] string DocumentType,
+    [property: JsonPropertyName("confidence")] double Confidence);
+
+/// <summary>A document whose classification confidence was low enough that Agent 1 also surfaced
+/// alternative candidate types -- worth a human's attention when triaging results.</summary>
+public sealed record LowConfidenceClassificationEntry(
+    [property: JsonPropertyName("documentId")] string DocumentId,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("documentType")] string DocumentType,
+    [property: JsonPropertyName("confidence")] double Confidence,
+    [property: JsonPropertyName("candidates")] IReadOnlyList<ClassificationCandidateEntry> Candidates);
+
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
     [property: JsonPropertyName("errors")] int Errors,
-    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments);
+    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments,
+    [property: JsonPropertyName("lowConfidenceClassifications")] IReadOnlyList<LowConfidenceClassificationEntry> LowConfidenceClassifications);
 
 public sealed record GenerateBatchReportInput(
     [property: JsonPropertyName("batchId")] string BatchId,
@@ -31,7 +45,8 @@ public sealed record GenerateBatchReportInput(
     [property: JsonPropertyName("startedAt")] DateTimeOffset StartedAt,
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,
     [property: JsonPropertyName("errors")] int Errors,
-    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments);
+    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments,
+    [property: JsonPropertyName("lowConfidenceClassifications")] IReadOnlyList<LowConfidenceClassificationEntry> LowConfidenceClassifications);
 
 public sealed record BatchReport(
     [property: JsonPropertyName("batchId")] string BatchId,
@@ -43,7 +58,8 @@ public sealed record BatchReport(
     [property: JsonPropertyName("documentTypeCounts")] IReadOnlyDictionary<string, int> DocumentTypeCounts,
     [property: JsonPropertyName("suggestedFieldsByGroup")] IReadOnlyList<SuggestedFieldsByGroup> SuggestedFieldsByGroup,
     [property: JsonPropertyName("cost")] BatchCost Cost,
-    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments);
+    [property: JsonPropertyName("failedDocuments")] IReadOnlyList<FailedDocumentEntry> FailedDocuments,
+    [property: JsonPropertyName("lowConfidenceClassifications")] IReadOnlyList<LowConfidenceClassificationEntry> LowConfidenceClassifications);
 
 public sealed record SuggestedFieldsByGroup(
     [property: JsonPropertyName("group")] string Group,

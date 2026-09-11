@@ -2,6 +2,7 @@ using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace IdvEnrichment.Functions.Orchestrators;
 
@@ -17,6 +18,7 @@ public sealed class ChunkOrchestrator
         var log = ctx.CreateReplaySafeLogger<ChunkOrchestrator>();
         var results = new List<BatchDocumentEntry>();
         var failedDocuments = new List<FailedDocumentEntry>();
+        var lowConfidenceClassifications = new List<LowConfidenceClassificationEntry>();
         var errors = 0;
 
         // Process documents in parallel groups bounded by maxConcurrency
@@ -27,11 +29,15 @@ public sealed class ChunkOrchestrator
             var tasks = group.Select(doc => ProcessDocSafeAsync(ctx, doc, input, log));
             var groupResults = await Task.WhenAll(tasks);
 
-            foreach (var (result, succeeded, failedDocument) in groupResults)
+            foreach (var (result, succeeded, failedDocument, lowConfidenceEntry) in groupResults)
             {
                 if (succeeded)
                 {
                     results.Add(result!);
+                    if (lowConfidenceEntry is not null)
+                    {
+                        lowConfidenceClassifications.Add(lowConfidenceEntry);
+                    }
                 }
                 else
                 {
@@ -41,10 +47,10 @@ public sealed class ChunkOrchestrator
             }
         }
 
-        return new ChunkResult(results, errors, failedDocuments);
+        return new ChunkResult(results, errors, failedDocuments, lowConfidenceClassifications);
     }
 
-    private static async Task<(BatchDocumentEntry? Result, bool Succeeded, FailedDocumentEntry? FailedDocument)> ProcessDocSafeAsync(
+    private static async Task<(BatchDocumentEntry? Result, bool Succeeded, FailedDocumentEntry? FailedDocument, LowConfidenceClassificationEntry? LowConfidenceEntry)> ProcessDocSafeAsync(
         TaskOrchestrationContext ctx, LibraryDocument doc, ChunkRequest input, ILogger log)
     {
         try
@@ -76,7 +82,9 @@ public sealed class ChunkOrchestrator
                 result.ProcessingMetrics.ExtractionOutputTokens,
                 result.ProcessingMetrics.VisionInputTokens,
                 result.ProcessingMetrics.VisionOutputTokens,
-                result.Metadata?.SuggestedFields.Select(f => f.Key).ToList() ?? []), true, null);
+                result.Metadata?.SuggestedFields.Select(f => f.Key).ToList() ?? []),
+                true, null,
+                BuildLowConfidenceEntry(doc.Id, doc.RelativePath, result.TypeClassification));
         }
         catch (OperationCanceledException)
         {
@@ -85,12 +93,32 @@ public sealed class ChunkOrchestrator
         catch (TaskFailedException ex)
         {
             log.LogWarning(ex, "Document {DocId} failed after retries", doc.Id);
-            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath));
+            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Unexpected error processing document {DocId}", doc.Id);
-            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath));
+            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
         }
+    }
+
+    // Internal for testability: Agent 1 only populates Candidates when it couldn't confidently settle
+    // on one type, so this is null whenever there's nothing worth surfacing to a human reviewer.
+    internal static LowConfidenceClassificationEntry? BuildLowConfidenceEntry(
+        string documentId, string fileName, TypeClassificationResult classification)
+    {
+        if (classification.Candidates is not { Count: > 0 } candidates)
+        {
+            return null;
+        }
+
+        return new LowConfidenceClassificationEntry(
+            documentId,
+            fileName,
+            JsonSerializer.Serialize(classification.DocumentType).Trim('"'),
+            classification.Confidence,
+            candidates
+                .Select(c => new ClassificationCandidateEntry(JsonSerializer.Serialize(c.DocumentType).Trim('"'), c.Confidence))
+                .ToList());
     }
 }

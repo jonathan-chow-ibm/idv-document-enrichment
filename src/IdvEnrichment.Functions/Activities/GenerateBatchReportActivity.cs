@@ -86,7 +86,8 @@ public sealed class GenerateBatchReportActivity(
                 ExtractionTokens: new TokenUsage(extractionInputTokens, extractionOutputTokens),
                 VisionTokens: new TokenUsage(visionInputTokens, visionOutputTokens),
                 EstimatedTotalUsd: 0m),
-            FailedDocuments: input.FailedDocuments);
+            FailedDocuments: input.FailedDocuments,
+            LowConfidenceClassifications: input.LowConfidenceClassifications);
 
         if (reportContainer is not null)
         {
