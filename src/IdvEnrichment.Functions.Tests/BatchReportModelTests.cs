@@ -29,6 +29,46 @@ public class BatchReportModelTests
     }
 
     [Fact]
+    public void LowConfidenceClassificationEntry_SerializesWithExpectedPropertyNames()
+    {
+        var entry = new LowConfidenceClassificationEntry(
+            DocumentId: "doc-1",
+            FileName: "sub/report.pdf",
+            DocumentType: "Lease",
+            Confidence: 0.62,
+            Candidates: [new ClassificationCandidateEntry(DocumentType: "Amendment", Confidence: 0.31)]);
+
+        var json = JsonSerializer.Serialize(entry);
+
+        Assert.Contains("\"documentId\":\"doc-1\"", json);
+        Assert.Contains("\"fileName\":\"sub/report.pdf\"", json);
+        Assert.Contains("\"documentType\":\"Lease\"", json);
+        Assert.Contains("\"confidence\":0.62", json);
+        Assert.Contains("\"candidates\":[{\"documentType\":\"Amendment\",\"confidence\":0.31}]", json);
+    }
+
+    [Fact]
+    public void LowConfidenceClassificationEntry_RoundTripsThroughJson()
+    {
+        var entry = new LowConfidenceClassificationEntry(
+            DocumentId: "doc-1",
+            FileName: "sub/report.pdf",
+            DocumentType: "Lease",
+            Confidence: 0.62,
+            Candidates: [new ClassificationCandidateEntry(DocumentType: "Amendment", Confidence: 0.31)]);
+
+        var json = JsonSerializer.Serialize(entry);
+        var deserialized = JsonSerializer.Deserialize<LowConfidenceClassificationEntry>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(entry.DocumentId, deserialized!.DocumentId);
+        Assert.Equal(entry.FileName, deserialized.FileName);
+        Assert.Equal(entry.DocumentType, deserialized.DocumentType);
+        Assert.Equal(entry.Confidence, deserialized.Confidence);
+        Assert.Equal(entry.Candidates, deserialized.Candidates);
+    }
+
+    [Fact]
     public void BatchRequest_DeserializesItemIds()
     {
         const string json = """

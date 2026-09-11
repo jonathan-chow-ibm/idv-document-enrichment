@@ -184,7 +184,7 @@ public sealed class ExtractContentActivity(
             var text = textBuilder.ToString();
             return new ExtractionResult(
                 Text: text,
-                PageCount: document.NumberOfPages,
+                PageCount: pageLimit,
                 TextLength: text.Length,
                 KeyValuePairs: [],
                 Language: "unknown",

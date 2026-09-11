@@ -197,6 +197,21 @@ public sealed class GenerateBatchReportActivity(
             }
         }
 
+        if (r.LowConfidenceClassifications.Count > 0)
+        {
+            sb.AppendLine("<h2>Low-Confidence Classifications</h2>");
+            sb.AppendLine("<p>Documents whose classification confidence was low enough that alternative candidate types were also surfaced — worth a human's attention when triaging results.</p>");
+            sb.AppendLine("<table><thead><tr><th>File Name</th><th>Document Type</th><th>Confidence</th><th>Candidates</th></tr></thead><tbody>");
+            foreach (var entry in r.LowConfidenceClassifications)
+            {
+                var safeFileName = System.Net.WebUtility.HtmlEncode(entry.FileName);
+                var safeDocumentType = System.Net.WebUtility.HtmlEncode(entry.DocumentType);
+                var candidates = string.Join(", ", entry.Candidates.Select(c =>
+                    $"{System.Net.WebUtility.HtmlEncode(c.DocumentType)} ({c.Confidence:P0})"));
+                sb.AppendLine($"<tr><td>{safeFileName}</td><td>{safeDocumentType}</td><td>{entry.Confidence:P0}</td><td>{candidates}</td></tr>");
+            }
+            sb.AppendLine("</tbody></table>");
+        }
 
         sb.AppendLine($"<p style=\"color:#999;font-size:.8em;margin-top:32px\">Generated {r.CompletedAt:yyyy-MM-dd HH:mm:ss} UTC</p>");
         sb.AppendLine("</body></html>");
