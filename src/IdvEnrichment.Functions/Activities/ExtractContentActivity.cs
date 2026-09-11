@@ -237,8 +237,12 @@ public sealed class ExtractContentActivity(
     // DI's Pages parameter is only reliable for PDF input -- it errors on Word documents, and "pages"
     // isn't a fixed, well-defined concept for flowing Office formats generally (unlike PDF/TIFF). So
     // FirstPageOnly is only honored for PDFs here; other formats always get a full analysis regardless.
-    internal static string? BuildPagesParameter(string fileName, bool firstPageOnly) =>
-        firstPageOnly && Path.GetExtension(fileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+    // convertedToPdf counts as a PDF: the URL handed to DI points at a PDF Graph produced from the Office
+    // file, so Pages is safe there even though the original file name still reads .docx/.pptx. Deriving
+    // this from the name alone would silently bill a full-document analysis on every converted Office
+    // file that reaches DI, which is exactly what FirstPageOnly exists to prevent.
+    internal static string? BuildPagesParameter(string fileName, bool firstPageOnly, bool convertedToPdf = false) =>
+        firstPageOnly && (convertedToPdf || Path.GetExtension(fileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             ? "1"
             : null;
 
@@ -247,7 +251,7 @@ public sealed class ExtractContentActivity(
         var options = new AnalyzeDocumentOptions("prebuilt-layout", new Uri(input.DocumentUrl))
         {
             OutputContentFormat = DocumentContentFormat.Markdown,
-            Pages = BuildPagesParameter(input.FileName, input.FirstPageOnly),
+            Pages = BuildPagesParameter(input.FileName, input.FirstPageOnly, input.ConvertedToPdf),
         };
 
         // Bounds the call so a stalled/unresponsive service is treated as a failure (triggering the

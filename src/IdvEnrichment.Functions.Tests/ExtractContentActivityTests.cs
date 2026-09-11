@@ -104,6 +104,23 @@ public class ExtractContentActivityTests
     {
         // DI errors on the Pages parameter for Word documents, and pagination isn't a fixed concept
         // for flowing Office formats generally -- so these always get a full analysis regardless.
-        Assert.Null(ExtractContentActivity.BuildPagesParameter(fileName, firstPageOnly: true));
+        Assert.Null(ExtractContentActivity.BuildPagesParameter(fileName, firstPageOnly: true, convertedToPdf: false));
+    }
+
+    [Theory]
+    [InlineData("report.docx")]
+    [InlineData("deck.pptx")]
+    public void BuildPagesParameter_ConvertedToPdf_FirstPageOnly_ReturnsOne(string fileName)
+    {
+        // The URL DI receives points at the converted PDF, not the Office original, so Pages applies
+        // even though the file name still says .docx/.pptx. Without this, a converted Office file that
+        // falls back to DI would be billed for a full-document analysis on a classify-only run.
+        Assert.Equal("1", ExtractContentActivity.BuildPagesParameter(fileName, firstPageOnly: true, convertedToPdf: true));
+    }
+
+    [Fact]
+    public void BuildPagesParameter_ConvertedToPdf_NotFirstPageOnly_ReturnsNull()
+    {
+        Assert.Null(ExtractContentActivity.BuildPagesParameter("report.docx", firstPageOnly: false, convertedToPdf: true));
     }
 }
