@@ -84,4 +84,26 @@ public class ExtractContentActivityTests
         // FirstPageOnly bounds DI to page 1 regardless of the document's real page count.
         Assert.False(ExtractContentActivity.ExceedsDocumentIntelligencePageCap(pageCount: 5000, firstPageOnly: true));
     }
+
+    [Fact]
+    public void BuildPagesParameter_Pdf_FirstPageOnly_ReturnsOne()
+    {
+        Assert.Equal("1", ExtractContentActivity.BuildPagesParameter("report.pdf", firstPageOnly: true));
+    }
+
+    [Fact]
+    public void BuildPagesParameter_Pdf_NotFirstPageOnly_ReturnsNull()
+    {
+        Assert.Null(ExtractContentActivity.BuildPagesParameter("report.pdf", firstPageOnly: false));
+    }
+
+    [Theory]
+    [InlineData("report.docx")]
+    [InlineData("deck.pptx")]
+    public void BuildPagesParameter_NonPdf_FirstPageOnly_ReturnsNull(string fileName)
+    {
+        // DI errors on the Pages parameter for Word documents, and pagination isn't a fixed concept
+        // for flowing Office formats generally -- so these always get a full analysis regardless.
+        Assert.Null(ExtractContentActivity.BuildPagesParameter(fileName, firstPageOnly: true));
+    }
 }

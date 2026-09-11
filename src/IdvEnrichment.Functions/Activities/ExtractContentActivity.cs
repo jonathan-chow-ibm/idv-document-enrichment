@@ -234,12 +234,20 @@ public sealed class ExtractContentActivity(
     internal static bool ExceedsDocumentIntelligencePageCap(int pageCount, bool firstPageOnly) =>
         pageCount > DocumentIntelligencePageCap && !firstPageOnly;
 
+    // DI's Pages parameter is only reliable for PDF input -- it errors on Word documents, and "pages"
+    // isn't a fixed, well-defined concept for flowing Office formats generally (unlike PDF/TIFF). So
+    // FirstPageOnly is only honored for PDFs here; other formats always get a full analysis regardless.
+    internal static string? BuildPagesParameter(string fileName, bool firstPageOnly) =>
+        firstPageOnly && Path.GetExtension(fileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+            ? "1"
+            : null;
+
     private async Task<ExtractionResult> ExtractWithDocumentIntelligenceAsync(ExtractContentInput input, CancellationToken ct)
     {
         var options = new AnalyzeDocumentOptions("prebuilt-layout", new Uri(input.DocumentUrl))
         {
             OutputContentFormat = DocumentContentFormat.Markdown,
-            Pages = input.FirstPageOnly ? "1" : null,
+            Pages = BuildPagesParameter(input.FileName, input.FirstPageOnly),
         };
 
         // Bounds the call so a stalled/unresponsive service is treated as a failure (triggering the
