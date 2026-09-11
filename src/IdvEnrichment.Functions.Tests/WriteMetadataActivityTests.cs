@@ -41,7 +41,7 @@ public class WriteMetadataActivityTests
         Thresholds: new ConfidenceThresholds());
 
 
-    private static EnrichmentResult BuildResult(IReadOnlyDictionary<string, CategoryClassification>? fields)
+    private static EnrichmentResult BuildResult(IReadOnlyDictionary<string, CategoryClassification>? fields, bool classifyOnly = false)
     {
         var metadata = fields is null
             ? null
@@ -54,7 +54,8 @@ public class WriteMetadataActivityTests
             Metadata: metadata,
             ProcessingMetrics: new ProcessingMetrics(),
             RoutingDecision: RoutingDecision.Write,
-            LowConfidenceCategories: []);
+            LowConfidenceCategories: [],
+            ClassifyOnly: classifyOnly);
     }
 
     [Fact]
@@ -118,6 +119,19 @@ public class WriteMetadataActivityTests
         Assert.Equal("Letter of Intent", payload.AdditionalData!["DocumentType"]);
         Assert.Equal(0.9, payload.AdditionalData["AIConfidence"]);
         Assert.Equal("Classified", payload.AdditionalData["AIProcessingStatus"]);
+    }
+
+    [Fact]
+    public void BuildFieldsPayload_ClassifyOnly_OmitsAIProcessingStatus()
+    {
+        // AIProcessingStatus doubles as Power Automate's re-trigger guard -- setting it on a
+        // classify-only test run would silently block the document from ever being reprocessed
+        // for real. DocumentType/AIConfidence still get written; only the guard column is skipped.
+        var payload = WriteMetadataActivity.BuildFieldsPayload(
+            BuildResult(fields: null, classifyOnly: true), BuildTaxonomy(), DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("Letter of Intent", payload.AdditionalData!["DocumentType"]);
+        Assert.False(payload.AdditionalData.ContainsKey("AIProcessingStatus"));
     }
 
     [Fact]

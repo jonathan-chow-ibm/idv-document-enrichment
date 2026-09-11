@@ -42,7 +42,8 @@ public sealed class RouteResultActivity(
                 VisionOutputTokens: input.DrawingClassification?.OutputTokens ?? 0),
             RoutingDecision: decision,
             LowConfidenceCategories: lowConfidenceCategories,
-            DrawingClassification: input.DrawingClassification);
+            DrawingClassification: input.DrawingClassification,
+            ClassifyOnly: input.Message.ClassifyOnly);
 
         TrackEnrichmentEvent(input, result);
 

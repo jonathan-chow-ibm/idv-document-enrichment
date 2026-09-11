@@ -76,11 +76,19 @@ public sealed class WriteMetadataActivity(
         {
             ["DocumentType"] = JsonSerializer.Serialize(result.TypeClassification.DocumentType).Trim('"'),
             ["AIConfidence"] = result.TypeClassification.Confidence,
-            ["AIProcessingStatus"] = result.RoutingDecision == RoutingDecision.Write ? "Classified" : "Under Review",
             ["AIClassifiedDate"] = classifiedAt.ToString("o"),
             ["SuggestedFields"] = JsonSerializer.Serialize(result.Metadata?.SuggestedFields),
             ["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata }),
         };
+
+        // AIProcessingStatus doubles as Power Automate's re-trigger guard (see
+        // docs/architecture/power-automate-integration.md) — "Classified"/"Under Review" tell the real
+        // trigger flow this document was already handled and to skip it forever. A classify-only test
+        // run must never set that guard, or the document would silently never get a real pipeline pass.
+        if (!result.ClassifyOnly)
+        {
+            data["AIProcessingStatus"] = result.RoutingDecision == RoutingDecision.Write ? "Classified" : "Under Review";
+        }
 
         // Populate every taxonomy content column using the taxonomy's declared field_name → sharepoint_column
         // mapping (e.g., parcelId → ParcelID). See ADR-009 for the schema-driven writeback rationale.

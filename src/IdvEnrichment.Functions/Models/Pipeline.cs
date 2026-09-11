@@ -94,7 +94,8 @@ public sealed record EnrichmentResult(
     [property: JsonPropertyName("routingDecision")] RoutingDecision RoutingDecision,
     [property: JsonPropertyName("lowConfidenceCategories")] IReadOnlyList<string> LowConfidenceCategories,
     [property: JsonPropertyName("drawingClassification")] DrawingClassification? DrawingClassification = null,
-    [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded = true);
+    [property: JsonPropertyName("writeBackSucceeded")] bool WriteBackSucceeded = true,
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
 
 public sealed record ProcessingMetrics(
     [property: JsonPropertyName("extractionDurationMs")] int ExtractionDurationMs = 0,
