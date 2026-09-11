@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.Graph;
+using System.Net.Http;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()
@@ -55,6 +56,11 @@ var host = new HostBuilder()
         });
 
         services.AddHttpClient("spreadsheet", c => c.Timeout = TimeSpan.FromMinutes(5));
+
+        // Used to call Graph's format=pdf conversion endpoint, whose 302 redirect must be captured
+        // (via the Location header) rather than followed.
+        services.AddHttpClient("graph-no-redirect", c => c.Timeout = TimeSpan.FromMinutes(2))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
         services.AddSingleton(_ =>
         {

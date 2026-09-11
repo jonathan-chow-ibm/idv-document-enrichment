@@ -1,13 +1,22 @@
+using Azure.Core;
 using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
+using System.Net.Http.Headers;
 
 namespace IdvEnrichment.Functions.Activities;
 
-public sealed class GetDocumentDownloadUrlActivity(GraphServiceClient graphClient)
+public sealed class GetDocumentDownloadUrlActivity(
+    GraphServiceClient graphClient,
+    IHttpClientFactory httpClientFactory,
+    TokenCredential tokenCredential,
+    ILogger<GetDocumentDownloadUrlActivity> logger)
 {
+    private static readonly string[] GraphScopes = ["https://graph.microsoft.com/.default"];
+
     [Function(nameof(GetDocumentDownloadUrl))]
-    public async Task<string> GetDocumentDownloadUrl(
+    public async Task<DocumentDownloadResult> GetDocumentDownloadUrl(
         [ActivityTrigger] GetDocumentDownloadUrlInput input,
         CancellationToken ct = default)
     {
@@ -20,7 +29,7 @@ public sealed class GetDocumentDownloadUrlActivity(GraphServiceClient graphClien
         if (input.FileUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
             !input.FileUrl.Contains("sharepoint.com", StringComparison.OrdinalIgnoreCase))
         {
-            return input.FileUrl;
+            return new DocumentDownloadResult(input.FileUrl, IsConvertedToPdf: false);
         }
 
         var driveItem = await graphClient.Drives[input.DriveId]
@@ -32,8 +41,55 @@ public sealed class GetDocumentDownloadUrlActivity(GraphServiceClient graphClien
             ? urlObj as string
             : null;
 
-        return downloadUrl
-            ?? throw new InvalidOperationException(
+        if (downloadUrl is null)
+        {
+            throw new InvalidOperationException(
                 $"Graph did not return a download URL for item {input.ItemId}.");
+        }
+
+        if (!ShouldConvertToPdf(input.FileName))
+        {
+            return new DocumentDownloadResult(downloadUrl, IsConvertedToPdf: false);
+        }
+
+        // A Word/PowerPoint file converted to PDF always has a real text layer (never a scan), so it
+        // will be classified as born-digital and extracted for free by PdfPig instead of paying for a
+        // Document Intelligence call. Any failure here falls back to the original file, unconverted.
+        try
+        {
+            var convertedUrl = await TryConvertToPdfAsync(input.DriveId, input.ItemId, ct);
+            if (!string.IsNullOrEmpty(convertedUrl))
+            {
+                return new DocumentDownloadResult(convertedUrl, IsConvertedToPdf: true);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Graph PDF conversion failed for item {ItemId}; falling back to the original file.", input.ItemId);
+        }
+
+        return new DocumentDownloadResult(downloadUrl, IsConvertedToPdf: false);
     }
+
+    private async Task<string?> TryConvertToPdfAsync(string driveId, string itemId, CancellationToken ct)
+    {
+        var token = await tokenCredential.GetTokenAsync(new TokenRequestContext(GraphScopes), ct);
+
+        var client = httpClientFactory.CreateClient("graph-no-redirect");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"https://graph.microsoft.com/v1.0/drives/{driveId}/items/{itemId}/content?format=pdf");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+
+        using var response = await client.SendAsync(request, ct);
+
+        return response.Headers.Location?.ToString();
+    }
+
+    // Only .docx/.pptx are reachable today per EnumerateLibraryActivity's SupportedExtensions allow-list,
+    // but this covers Graph's full documented format=pdf source list since it costs nothing to future-proof.
+    internal static bool ShouldConvertToPdf(string fileName) =>
+        Path.GetExtension(fileName).ToLowerInvariant() is ".doc" or ".docx" or ".dot" or ".dotx" or ".dotm"
+            or ".ppt" or ".pptx" or ".pps" or ".ppsx";
 }
+

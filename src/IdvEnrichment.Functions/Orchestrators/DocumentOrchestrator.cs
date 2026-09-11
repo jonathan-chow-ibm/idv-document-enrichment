@@ -35,14 +35,15 @@ public sealed class DocumentOrchestrator
 
         try
         {
-            var downloadUrl = await ctx.CallActivityAsync<string>(
+            var downloadResult = await ctx.CallActivityAsync<DocumentDownloadResult>(
                 "GetDocumentDownloadUrl",
-                new GetDocumentDownloadUrlInput(message.DriveId, message.ItemId, message.FileUrl),
+                new GetDocumentDownloadUrlInput(message.DriveId, message.ItemId, message.FileUrl, FileName: message.FileName),
                 retry);
+            var downloadUrl = downloadResult.Url;
 
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
                 "ExtractContent",
-                new ExtractContentInput(downloadUrl, message.FileName, FirstPageOnly: message.ClassifyOnly),
+                new ExtractContentInput(downloadUrl, message.FileName, FirstPageOnly: message.ClassifyOnly, ConvertedToPdf: downloadResult.IsConvertedToPdf),
                 extractContentRetry);
 
             if (extraction.IsUnsupported)

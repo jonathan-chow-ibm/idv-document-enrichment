@@ -117,12 +117,20 @@ public sealed record ExtractContentInput(
     string FileName = "",
     // When true, only the first page is read/analyzed — used by classify-only runs, where a
     // representative first page is enough signal and a full-document pass would be wasted cost.
-    bool FirstPageOnly = false);
+    bool FirstPageOnly = false,
+    // True when DocumentUrl points at a PDF that Graph converted from Word/PowerPoint — a
+    // converted PDF always has a real text layer, so it is routed through the PDF extraction path.
+    [property: JsonPropertyName("convertedToPdf")] bool ConvertedToPdf = false);
 
 public sealed record GetDocumentDownloadUrlInput(
     [property: JsonPropertyName("driveId")] string DriveId,
     [property: JsonPropertyName("itemId")] string ItemId,
-    [property: JsonPropertyName("fileUrl")] string FileUrl);
+    [property: JsonPropertyName("fileUrl")] string FileUrl,
+    [property: JsonPropertyName("fileName")] string FileName = "");
+
+public sealed record DocumentDownloadResult(
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("isConvertedToPdf")] bool IsConvertedToPdf);
 
 public sealed record ClassifyTypeInput(
     [property: JsonPropertyName("documentId")] string DocumentId,

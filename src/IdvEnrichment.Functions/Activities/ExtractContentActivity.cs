@@ -58,7 +58,7 @@ public sealed class ExtractContentActivity(
             return await ExtractSpreadsheetAsync(input, ct);
         }
 
-        if (Path.GetExtension(input.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+        if (input.ConvertedToPdf || Path.GetExtension(input.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
         {
             return await ExtractPdfAsync(input, ct);
         }
