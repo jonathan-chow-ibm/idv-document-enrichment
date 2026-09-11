@@ -65,4 +65,23 @@ public class ExtractContentActivityTests
 
         Assert.Equal(PdfSizeRoute.AttemptLocalParsing, route);
     }
+
+    [Fact]
+    public void ExceedsDocumentIntelligencePageCap_UnderCap_ReturnsFalse()
+    {
+        Assert.False(ExtractContentActivity.ExceedsDocumentIntelligencePageCap(pageCount: 120, firstPageOnly: false));
+    }
+
+    [Fact]
+    public void ExceedsDocumentIntelligencePageCap_OverCap_ReturnsTrue()
+    {
+        Assert.True(ExtractContentActivity.ExceedsDocumentIntelligencePageCap(pageCount: 121, firstPageOnly: false));
+    }
+
+    [Fact]
+    public void ExceedsDocumentIntelligencePageCap_FirstPageOnly_OverCap_ReturnsFalse()
+    {
+        // FirstPageOnly bounds DI to page 1 regardless of the document's real page count.
+        Assert.False(ExtractContentActivity.ExceedsDocumentIntelligencePageCap(pageCount: 5000, firstPageOnly: true));
+    }
 }

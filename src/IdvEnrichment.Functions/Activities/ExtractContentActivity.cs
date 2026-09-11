@@ -35,6 +35,10 @@ public sealed class ExtractContentActivity(
     // Only relevant for documents that turn out to be SCANNED; above this, DI is skipped and the doc
     // routes to Review instead, since a DI call would risk both cost and the host functionTimeout.
     private const long DocumentIntelligenceSizeCapBytes = 50 * 1024 * 1024; // 50 MB
+    // Post-open equivalent of DocumentIntelligenceSizeCapBytes, using the REAL page count once the file
+    // is open instead of a byte-based estimate — derived from this corpus's measured ~440KB/page density
+    // at this size range (50MB / 440KB ≈ 119 pages; see pricing.json bytesPerPageBands).
+    private const int DocumentIntelligencePageCap = 120;
     // An embedded image covering more than this fraction of the page area is treated as a full-page scan image.
     private const double FullPageImageAreaRatio = 0.8;
 
@@ -151,9 +155,9 @@ public sealed class ExtractContentActivity(
                 logger.LogWarning(
                     "{FileName} has {PageCount} pages, exceeding the local parsing cap of {PageCap}.",
                     input.FileName, document.NumberOfPages, LocalPdfParsingPageCap);
-                return ExceedsDocumentIntelligenceSizeCap(contentLength)
-                    ? ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0))
-                    : await ExtractWithDocumentIntelligenceAsync(input, ct);
+                // Already over the 2000-page local cap, which always exceeds the 120-page DI cap too —
+                // no DI fallback is reachable here, so this is unconditionally too large.
+                return ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0));
             }
 
             var pageLimit = input.FirstPageOnly ? 1 : document.NumberOfPages;
@@ -171,7 +175,7 @@ public sealed class ExtractContentActivity(
 
             if (!PdfDigitalDetector.IsBornDigital(pages))
             {
-                return ExceedsDocumentIntelligenceSizeCap(contentLength) && !input.FirstPageOnly
+                return ExceedsDocumentIntelligencePageCap(document.NumberOfPages, input.FirstPageOnly)
                     ? ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0))
                     : await ExtractWithDocumentIntelligenceAsync(input, ct);
             }
@@ -224,6 +228,11 @@ public sealed class ExtractContentActivity(
 
     private static bool ExceedsDocumentIntelligenceSizeCap(long contentLength) =>
         contentLength < 0 || contentLength > DocumentIntelligenceSizeCapBytes;
+
+    // Real-page-count counterpart to ExceedsDocumentIntelligenceSizeCap, used once the file is open and
+    // the actual page count is known rather than estimated from bytes.
+    internal static bool ExceedsDocumentIntelligencePageCap(int pageCount, bool firstPageOnly) =>
+        pageCount > DocumentIntelligencePageCap && !firstPageOnly;
 
     private async Task<ExtractionResult> ExtractWithDocumentIntelligenceAsync(ExtractContentInput input, CancellationToken ct)
     {
