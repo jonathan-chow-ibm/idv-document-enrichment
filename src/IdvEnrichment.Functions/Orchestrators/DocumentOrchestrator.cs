@@ -40,7 +40,12 @@ public sealed class DocumentOrchestrator
             // see DownloadRetryHelper.
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
                 "ExtractContent",
-                new ExtractContentInput(downloadUrl, message.FileName, FirstPageOnly: message.ClassifyOnly, ConvertedToPdf: downloadResult.IsConvertedToPdf));
+                new ExtractContentInput(
+                    downloadUrl,
+                    message.FileName,
+                    FirstPageOnly: message.ClassifyOnly,
+                    ConvertedToPdf: downloadResult.IsConvertedToPdf,
+                    OriginalUrl: downloadResult.OriginalUrl));
 
             if (extraction.IsUnsupported)
             {

@@ -60,7 +60,29 @@ public sealed class ExtractContentActivity(
 
         if (input.ConvertedToPdf || Path.GetExtension(input.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            return await ExtractPdfAsync(input, ct);
+            try
+            {
+                return await ExtractPdfAsync(input, ct);
+            }
+            catch (HttpRequestException ex) when (input.ConvertedToPdf && !string.IsNullOrEmpty(input.OriginalUrl))
+            {
+                // Graph handed back a URL for a converted PDF that the media service then refused to
+                // produce — it does that for corrupt Office files and documents carrying embedded OLE
+                // objects, and the refusal is only visible once the URL is fetched. Conversion is a cost
+                // optimization, not a requirement, so read the original file rather than failing the
+                // document. GetDocumentDownloadUrlActivity cannot catch this: by the time the refusal
+                // happens, its own fallback is two activities behind us.
+                //
+                // Only HttpRequestException is caught, which inside ExtractPdfAsync can only come from the
+                // download — Document Intelligence surfaces failures as RequestFailedException or
+                // TimeoutException, so a DI failure still propagates.
+                logger.LogWarning(ex,
+                    "Converted PDF for {FileName} could not be retrieved; extracting the original file instead.",
+                    input.FileName);
+
+                return await ExtractWithDocumentIntelligenceAsync(
+                    input with { DocumentUrl = input.OriginalUrl, ConvertedToPdf = false }, ct);
+            }
         }
 
         if (Path.GetExtension(input.FileName).Equals(".txt", StringComparison.OrdinalIgnoreCase))

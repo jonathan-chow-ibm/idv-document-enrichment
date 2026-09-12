@@ -91,6 +91,9 @@ public class GetDocumentDownloadUrlActivityTests
 
         Assert.Equal("https://example.blob.core.windows.net/converted.pdf", result.Url);
         Assert.True(result.IsConvertedToPdf);
+        // The unconverted file travels with it: the media service refuses some files only when the
+        // converted URL is fetched, which happens two activities later, so extraction needs a fallback.
+        Assert.Equal(OriginalDownloadUrl, result.OriginalUrl);
     }
 
     [Fact]
@@ -104,6 +107,8 @@ public class GetDocumentDownloadUrlActivityTests
 
         Assert.Equal(OriginalDownloadUrl, result.Url);
         Assert.False(result.IsConvertedToPdf);
+        // Nothing to fall back FROM when the URL is already the original.
+        Assert.Null(result.OriginalUrl);
     }
 
     [Fact]

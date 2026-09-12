@@ -61,7 +61,12 @@ public sealed class GetDocumentDownloadUrlActivity(
             var conversion = await TryConvertToPdfAsync(input.DriveId, input.ItemId, ct);
             if (!string.IsNullOrEmpty(conversion.Url))
             {
-                return new DocumentDownloadResult(conversion.Url, IsConvertedToPdf: true);
+                // The original travels alongside it. Graph returns this URL before the media service has
+                // produced anything, and that service refuses outright for files it cannot convert
+                // (corrupt Office files, documents carrying embedded OLE objects). The refusal only
+                // surfaces when the URL is fetched — in ExtractContent, too late for the fallback below —
+                // so extraction needs the unconverted file to fall back to.
+                return new DocumentDownloadResult(conversion.Url, IsConvertedToPdf: true, OriginalUrl: downloadUrl);
             }
 
             // Graph answered but didn't hand back the redirect the conversion is read from. Staying

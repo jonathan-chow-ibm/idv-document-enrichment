@@ -120,7 +120,10 @@ public sealed record ExtractContentInput(
     bool FirstPageOnly = false,
     // True when DocumentUrl points at a PDF that Graph converted from Word/PowerPoint — a
     // converted PDF always has a real text layer, so it is routed through the PDF extraction path.
-    [property: JsonPropertyName("convertedToPdf")] bool ConvertedToPdf = false);
+    [property: JsonPropertyName("convertedToPdf")] bool ConvertedToPdf = false,
+    // The unconverted file, set only alongside ConvertedToPdf. Conversion is a cost optimisation, not a
+    // requirement, so a converted PDF the media service refuses to produce falls back to this.
+    [property: JsonPropertyName("originalUrl")] string? OriginalUrl = null);
 
 public sealed record GetDocumentDownloadUrlInput(
     [property: JsonPropertyName("driveId")] string DriveId,
@@ -130,7 +133,11 @@ public sealed record GetDocumentDownloadUrlInput(
 
 public sealed record DocumentDownloadResult(
     [property: JsonPropertyName("url")] string Url,
-    [property: JsonPropertyName("isConvertedToPdf")] bool IsConvertedToPdf);
+    [property: JsonPropertyName("isConvertedToPdf")] bool IsConvertedToPdf,
+    // Set only when Url points at a converted PDF. Graph returns that URL before the media service has
+    // produced anything, and it refuses outright for files it cannot convert -- so extraction needs the
+    // unconverted file to fall back to, since the refusal only surfaces when the URL is fetched.
+    [property: JsonPropertyName("originalUrl")] string? OriginalUrl = null);
 
 public sealed record ClassifyTypeInput(
     [property: JsonPropertyName("documentId")] string DocumentId,
