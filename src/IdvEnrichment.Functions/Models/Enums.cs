@@ -17,7 +17,9 @@ public enum RoutingDecision
 }
 
 /// <summary>Document types recognized by the taxonomy (v4, from client Metadata Request). Keep in sync with taxonomy.yaml.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<DocumentType>))]
+// Tolerant converter, not JsonStringEnumConverter: Agent 1 runs without a response schema and can name a
+// type outside the taxonomy, which threw and failed the entire classification. See the converter's remarks.
+[JsonConverter(typeof(TolerantDocumentTypeConverter))]
 public enum DocumentType
 {
     // Contracts

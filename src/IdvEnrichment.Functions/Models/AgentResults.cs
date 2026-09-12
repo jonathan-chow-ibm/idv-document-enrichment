@@ -15,7 +15,12 @@ public sealed record TypeClassificationResult(
 
 /// <summary>An alternative document type Agent 1 considered but didn't settle on.</summary>
 public sealed record ClassificationCandidate(
-    [property: JsonPropertyName("documentType")] DocumentType DocumentType,
+    // Deliberately a string rather than DocumentType. Candidates are advisory hints for human triage, and
+    // Agent 1 sometimes names a type outside the taxonomy; coercing them to the enum would collapse a real
+    // suggestion ("Proposal/Pitch Deck") into a row of "Other" and destroy the signal the candidates list
+    // exists to provide — including the signal that the taxonomy may be missing a type. The only consumer
+    // serializes this straight back to a string for the batch report anyway.
+    [property: JsonPropertyName("documentType")] string DocumentType,
     [property: JsonPropertyName("confidence")] double Confidence);
 
 /// <summary>Extraction result for a single metadata field.</summary>

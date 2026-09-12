@@ -119,7 +119,8 @@ public sealed class ChunkOrchestrator
             JsonSerializer.Serialize(classification.DocumentType).Trim('"'),
             classification.Confidence,
             candidates
-                .Select(c => new ClassificationCandidateEntry(JsonSerializer.Serialize(c.DocumentType).Trim('"'), c.Confidence))
+                // Already a string — carries the model's own wording, including types outside the taxonomy.
+                .Select(c => new ClassificationCandidateEntry(c.DocumentType, c.Confidence))
                 .ToList());
     }
 }
