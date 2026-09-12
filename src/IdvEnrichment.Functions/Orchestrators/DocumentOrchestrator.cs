@@ -21,18 +21,6 @@ public sealed class DocumentOrchestrator
             firstRetryInterval: TimeSpan.FromSeconds(5),
             backoffCoefficient: 2.0));
 
-        // A timeout means DI already ran (or is still running) the analysis and will be billed for it
-        // regardless of whether we saw the result — retrying would submit a brand-new billable job on top
-        // of one that may still be in progress, tripling cost on the slowest documents for no real chance
-        // of success. Genuine transient failures (429s, network blips) still get the normal 3x retry.
-        var extractContentRetry = TaskOptions.FromRetryPolicy(new RetryPolicy(
-            maxNumberOfAttempts: 3,
-            firstRetryInterval: TimeSpan.FromSeconds(5),
-            backoffCoefficient: 2.0)
-        {
-            HandleFailure = failure => !failure.IsCausedBy<TimeoutException>(),
-        });
-
         try
         {
             var downloadResult = await ctx.CallActivityAsync<DocumentDownloadResult>(
@@ -41,10 +29,18 @@ public sealed class DocumentOrchestrator
                 retry);
             var downloadUrl = downloadResult.Url;
 
+            // ExtractContent gets NO retry, deliberately. It submits a billable Document Intelligence job,
+            // so a whole-activity retry can resubmit work already accepted — a network error while polling
+            // an in-flight analysis is not a TimeoutException, so no predicate separates "already billed"
+            // from "not billed" reliably. (The RetryPolicy.HandleFailure predicate that used to sit here
+            // produced no retries at all: an ExtractContent failure completed in 2s against the ~15s floor
+            // for 3 attempts.) DI's own transient failures are handled by the Azure SDK's retry pipeline,
+            // which retries individual requests — including each status poll — rather than resubmitting the
+            // operation. Transient DOWNLOAD failures retry inside the activity, where DI is never involved;
+            // see DownloadRetryHelper.
             var extraction = await ctx.CallActivityAsync<ExtractionResult>(
                 "ExtractContent",
-                new ExtractContentInput(downloadUrl, message.FileName, FirstPageOnly: message.ClassifyOnly, ConvertedToPdf: downloadResult.IsConvertedToPdf),
-                extractContentRetry);
+                new ExtractContentInput(downloadUrl, message.FileName, FirstPageOnly: message.ClassifyOnly, ConvertedToPdf: downloadResult.IsConvertedToPdf));
 
             if (extraction.IsUnsupported)
             {

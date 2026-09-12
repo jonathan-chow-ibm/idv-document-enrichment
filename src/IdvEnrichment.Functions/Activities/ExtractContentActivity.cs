@@ -75,8 +75,8 @@ public sealed class ExtractContentActivity(
     {
         var sw = Stopwatch.StartNew();
         var client = httpClientFactory.CreateClient("spreadsheet");
-        using var response = await client.GetAsync(input.DocumentUrl, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await DownloadRetryHelper.GetWithRetryAsync(
+            token => client.GetAsync(input.DocumentUrl, token), input.FileName, logger, ct);
         var text = await response.Content.ReadAsStringAsync(ct);
         sw.Stop();
 
@@ -94,8 +94,9 @@ public sealed class ExtractContentActivity(
     {
         var sw = Stopwatch.StartNew();
         var client = httpClientFactory.CreateClient("spreadsheet");
-        using var response = await client.GetAsync(input.DocumentUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await DownloadRetryHelper.GetWithRetryAsync(
+            token => client.GetAsync(input.DocumentUrl, HttpCompletionOption.ResponseHeadersRead, token),
+            input.FileName, logger, ct);
 
         var contentLength = response.Content.Headers.ContentLength ?? -1;
         using var stream = await response.Content.ReadAsStreamAsync(ct);
@@ -125,8 +126,9 @@ public sealed class ExtractContentActivity(
     private async Task<ExtractionResult> ExtractPdfAsync(ExtractContentInput input, CancellationToken ct)
     {
         var client = httpClientFactory.CreateClient("spreadsheet");
-        using var response = await client.GetAsync(input.DocumentUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await DownloadRetryHelper.GetWithRetryAsync(
+            token => client.GetAsync(input.DocumentUrl, HttpCompletionOption.ResponseHeadersRead, token),
+            input.FileName, logger, ct);
 
         var contentLength = response.Content.Headers.ContentLength ?? -1;
 
