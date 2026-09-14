@@ -38,27 +38,7 @@ public sealed class GenerateBatchReportActivity(
 
         var taxonomy = await taxonomyLoader.LoadAsync(ct);
 
-        var suggestedFieldsByGroup = input.Results
-            .Where(r => r.SuggestedFieldKeys != null && r.SuggestedFieldKeys.Count > 0)
-            .GroupBy(r => taxonomy.GetGroupForDocumentType(r.DocumentType) ?? "Other")
-            .OrderBy(g => g.Key)
-            .Select(grouping => new SuggestedFieldsByGroup(
-                Group: grouping.Key,
-                ByDocumentType: grouping
-                    .GroupBy(r => JsonSerializer.Serialize(r.DocumentType).Trim('"'))
-                    .OrderByDescending(g => g.Count())
-                    .Select(dtGrouping => new SuggestedFieldsByDocumentType(
-                        DocumentType: dtGrouping.Key,
-                        DocumentCount: dtGrouping.Count(),
-                        TopFields: dtGrouping
-                            .SelectMany(r => r.SuggestedFieldKeys)
-                            .GroupBy(k => k, StringComparer.OrdinalIgnoreCase)
-                            .OrderByDescending(g => g.Count())
-                            .Take(10)
-                            .Select(g => new SuggestedFieldEntry(g.Key, g.Count(), []))
-                            .ToList()))
-                    .ToList()))
-            .ToList();
+        var suggestedFieldsByGroup = BuildSuggestedFieldsByGroup(input.Results, taxonomy);
 
         var classificationInputTokens = input.Results.Sum(r => (long)r.ClassificationInputTokens);
         var classificationOutputTokens = input.Results.Sum(r => (long)r.ClassificationOutputTokens);
@@ -120,6 +100,92 @@ public sealed class GenerateBatchReportActivity(
         await htmlBlob.UploadAsync(new BinaryData(htmlBytes), new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "text/html; charset=utf-8" } }, ct);
 
         logger.LogInformation("Batch report written to {Prefix}", prefix);
+    }
+
+    // Max example values kept per suggested field. Enough to tell what a field holds; few enough that a
+    // type with hundreds of candidates stays readable.
+    private const int MaxExampleValues = 3;
+
+    // Internal for testability: aggregates Agent 2's suggested fields into the per-type view used to decide
+    // what belongs in each document type's specific_fields.
+    //
+    // Two deliberate choices, both aimed at that decision rather than at a tidy summary:
+    //   - No top-N cap. Frequency-ranked truncation drops the low-frequency tail, and a field appearing in
+    //     3 of 40 Leases and nowhere else is a far better specific_fields candidate than one appearing in
+    //     every document of every type.
+    //   - Ranked by exclusivity, not frequency: fields no other type suggested come first. OtherTypeCount
+    //     is computed across the whole batch, so it is unaffected by the taxonomy grouping.
+    internal static IReadOnlyList<SuggestedFieldsByGroup> BuildSuggestedFieldsByGroup(
+        IReadOnlyList<BatchDocumentEntry> results, TaxonomyData taxonomy)
+    {
+        var withSuggestions = results
+            .Where(r => r.SuggestedFields is { Count: > 0 })
+            .ToList();
+
+        // key -> the set of document types that suggested it, across the entire batch.
+        var typesByKey = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var result in withSuggestions)
+        {
+            var documentType = JsonSerializer.Serialize(result.DocumentType).Trim('"');
+            foreach (var suggestion in result.SuggestedFields)
+            {
+                if (string.IsNullOrWhiteSpace(suggestion.Key)) { continue; }
+
+                if (!typesByKey.TryGetValue(suggestion.Key, out var types))
+                {
+                    types = new HashSet<string>(StringComparer.Ordinal);
+                    typesByKey[suggestion.Key] = types;
+                }
+
+                types.Add(documentType);
+            }
+        }
+
+        return withSuggestions
+            .GroupBy(r => taxonomy.GetGroupForDocumentType(r.DocumentType) ?? "Other")
+            .OrderBy(g => g.Key)
+            .Select(grouping => new SuggestedFieldsByGroup(
+                Group: grouping.Key,
+                ByDocumentType: grouping
+                    .GroupBy(r => JsonSerializer.Serialize(r.DocumentType).Trim('"'))
+                    .OrderByDescending(g => g.Count())
+                    .Select(dtGrouping => new SuggestedFieldsByDocumentType(
+                        DocumentType: dtGrouping.Key,
+                        DocumentCount: dtGrouping.Count(),
+                        Fields: BuildFieldEntries(dtGrouping.Key, dtGrouping, typesByKey)))
+                    .ToList()))
+            .ToList();
+    }
+
+    private static IReadOnlyList<SuggestedFieldEntry> BuildFieldEntries(
+        string documentType,
+        IEnumerable<BatchDocumentEntry> typeResults,
+        Dictionary<string, HashSet<string>> typesByKey)
+    {
+        return typeResults
+            .SelectMany(r => r.SuggestedFields)
+            .Where(f => !string.IsNullOrWhiteSpace(f.Key))
+            .GroupBy(f => f.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(keyGrouping =>
+            {
+                // Subtract this type itself, so the count reflects only the types competing for the field.
+                var otherTypeCount = typesByKey.TryGetValue(keyGrouping.Key, out var types)
+                    ? types.Count(t => !string.Equals(t, documentType, StringComparison.Ordinal))
+                    : 0;
+
+                var exampleValues = keyGrouping
+                    .Select(f => f.Value)
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(MaxExampleValues)
+                    .ToList();
+
+                return new SuggestedFieldEntry(keyGrouping.Key, keyGrouping.Count(), otherTypeCount, exampleValues);
+            })
+            .OrderBy(f => f.OtherTypeCount)
+            .ThenByDescending(f => f.DocumentCount)
+            .ThenBy(f => f.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     // Internal for testability: groups results by document type to compute size totals/averages for the report.
@@ -198,6 +264,7 @@ public sealed class GenerateBatchReportActivity(
         sb.AppendLine(".bar-high{background:#107c10}.bar-med{background:#ffaa44}.bar-low{background:#d13438}");
         sb.AppendLine("table{width:100%;border-collapse:collapse}th{background:#0078d4;color:#fff;padding:8px 12px;text-align:left}");
         sb.AppendLine("td{padding:8px 12px;border-bottom:1px solid #eee}tr:hover td{background:#f9f9f9}");
+        sb.AppendLine("h4{color:#444;margin:20px 0 6px}tr.exclusive td:first-child{font-weight:600;border-left:3px solid #107c10}");
         sb.AppendLine("</style></head><body>");
 
         sb.AppendLine("<h1>Batch Tagging Results Report</h1>");
@@ -228,7 +295,7 @@ public sealed class GenerateBatchReportActivity(
         if (r.SuggestedFieldsByGroup.Count > 0)
         {
             sb.AppendLine("<h2>Suggested Fields by Document Type</h2>");
-            sb.AppendLine("<p>Fields the AI discovered that are not in the current taxonomy. High-frequency fields are candidates for taxonomy additions.</p>");
+            sb.AppendLine("<p>Fields the AI discovered that are not in the current taxonomy. Ordered so fields no other document type suggested come first &mdash; those are the strongest candidates for a type's specific_fields.</p>");
             foreach (var group in r.SuggestedFieldsByGroup)
             {
                 if (group.ByDocumentType.Count == 0)
@@ -238,15 +305,20 @@ public sealed class GenerateBatchReportActivity(
 
                 var safeGroup = System.Net.WebUtility.HtmlEncode(group.Group);
                 sb.AppendLine($"<h3>{safeGroup}</h3>");
-                sb.AppendLine("<table><thead><tr><th>Document Type</th><th>Docs with Suggestions</th><th>Top Suggested Fields</th></tr></thead><tbody>");
                 foreach (var dt in group.ByDocumentType)
                 {
                     var safeDt = System.Net.WebUtility.HtmlEncode(dt.DocumentType);
-                    var fields = string.Join(", ", dt.TopFields.Select(f =>
-                        $"{System.Net.WebUtility.HtmlEncode(f.Key)} ({f.DocumentCount:N0})"));
-                    sb.AppendLine($"<tr><td>{safeDt}</td><td>{dt.DocumentCount:N0}</td><td>{fields}</td></tr>");
+                    sb.AppendLine($"<h4>{safeDt} &mdash; {dt.Fields.Count:N0} distinct field(s) across {dt.DocumentCount:N0} document(s)</h4>");
+                    sb.AppendLine("<table><thead><tr><th>Field</th><th>Docs</th><th>Other Types</th><th>Example Values</th></tr></thead><tbody>");
+                    foreach (var f in dt.Fields)
+                    {
+                        var safeKey = System.Net.WebUtility.HtmlEncode(f.Key);
+                        var examples = string.Join("; ", f.ExampleValues.Select(System.Net.WebUtility.HtmlEncode));
+                        var exclusive = f.OtherTypeCount == 0 ? " exclusive" : string.Empty;
+                        sb.AppendLine($"<tr class=\"{exclusive.Trim()}\"><td>{safeKey}</td><td>{f.DocumentCount:N0}</td><td>{f.OtherTypeCount:N0}</td><td>{examples}</td></tr>");
+                    }
+                    sb.AppendLine("</tbody></table>");
                 }
-                sb.AppendLine("</tbody></table>");
             }
         }
 

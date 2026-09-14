@@ -83,7 +83,7 @@ public sealed class ChunkOrchestrator
                 result.ProcessingMetrics.ExtractionOutputTokens,
                 result.ProcessingMetrics.VisionInputTokens,
                 result.ProcessingMetrics.VisionOutputTokens,
-                result.Metadata?.SuggestedFields.Select(f => f.Key).ToList() ?? [],
+                result.Metadata?.SuggestedFields.ToList() ?? [],
                 doc.Size),
                 true, null,
                 BuildLowConfidenceEntry(doc.Id, doc.RelativePath, result.TypeClassification));

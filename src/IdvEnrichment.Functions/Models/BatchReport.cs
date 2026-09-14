@@ -14,7 +14,9 @@ public sealed record BatchDocumentEntry(
     [property: JsonPropertyName("extractionOutputTokens")] int ExtractionOutputTokens = 0,
     [property: JsonPropertyName("visionInputTokens")] int VisionInputTokens = 0,
     [property: JsonPropertyName("visionOutputTokens")] int VisionOutputTokens = 0,
-    [property: JsonPropertyName("suggestedFieldKeys")] IReadOnlyList<string> SuggestedFieldKeys = null!,
+    // Full suggestions, not just their keys: the key alone rarely says what a field is, so the report
+    // shows example values alongside it when weighing a candidate for the taxonomy.
+    [property: JsonPropertyName("suggestedFields")] IReadOnlyList<SuggestedField> SuggestedFields = null!,
     [property: JsonPropertyName("sizeBytes")] long SizeBytes = 0);
 
 public sealed record FailedDocumentEntry(
@@ -78,11 +80,16 @@ public sealed record SuggestedFieldsByGroup(
 public sealed record SuggestedFieldsByDocumentType(
     [property: JsonPropertyName("documentType")] string DocumentType,
     [property: JsonPropertyName("documentCount")] int DocumentCount,
-    [property: JsonPropertyName("topFields")] IReadOnlyList<SuggestedFieldEntry> TopFields);
+    // Every distinct suggested key for this type, not a top-N slice. Ranking by raw frequency and
+    // truncating discards the low-frequency tail, which is exactly where type-specific fields live.
+    [property: JsonPropertyName("fields")] IReadOnlyList<SuggestedFieldEntry> Fields);
 
 public sealed record SuggestedFieldEntry(
     [property: JsonPropertyName("key")] string Key,
     [property: JsonPropertyName("documentCount")] int DocumentCount,
+    // How many OTHER document types also suggested this key. Zero means the field is exclusive to this
+    // type -- the signal that matters when deciding what belongs in a type's specific_fields.
+    [property: JsonPropertyName("otherTypeCount")] int OtherTypeCount,
     [property: JsonPropertyName("exampleValues")] IReadOnlyList<string> ExampleValues);
 
 public sealed record BatchSummary(
