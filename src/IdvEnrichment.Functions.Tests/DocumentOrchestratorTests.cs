@@ -1,0 +1,63 @@
+using IdvEnrichment.Functions.Orchestrators;
+using Xunit;
+
+namespace IdvEnrichment.Functions.Tests;
+
+public class DocumentOrchestratorTests
+{
+    [Fact]
+    public void ResolveMaxPages_PositiveValue_ReturnsIt()
+    {
+        var resolved = DocumentOrchestrator.ResolveMaxPages(requestedMaxPages: 3, classifyOnly: false);
+
+        Assert.Equal(3, resolved);
+    }
+
+    [Fact]
+    public void ResolveMaxPages_PositiveValue_ClassifyOnly_ReturnsIt()
+    {
+        // An explicit override always wins over the classify-only default, regardless of its value.
+        var resolved = DocumentOrchestrator.ResolveMaxPages(requestedMaxPages: 5, classifyOnly: true);
+
+        Assert.Equal(5, resolved);
+    }
+
+    [Fact]
+    public void ResolveMaxPages_Null_ClassifyOnly_DefaultsToOne()
+    {
+        var resolved = DocumentOrchestrator.ResolveMaxPages(requestedMaxPages: null, classifyOnly: true);
+
+        Assert.Equal(1, resolved);
+    }
+
+    [Fact]
+    public void ResolveMaxPages_Null_NotClassifyOnly_ReturnsNull()
+    {
+        var resolved = DocumentOrchestrator.ResolveMaxPages(requestedMaxPages: null, classifyOnly: false);
+
+        Assert.Null(resolved);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ResolveMaxPages_ZeroOrNegative_ClassifyOnly_DefaultsToOne(int requestedMaxPages)
+    {
+        // Zero/negative MaxPages carries no page limit, same as null -- it must not be treated as an
+        // explicit override and skip the classify-only default, which is exactly what a bare
+        // "message.MaxPages ?? (classifyOnly ? 1 : null)" would do (?? only substitutes on null).
+        var resolved = DocumentOrchestrator.ResolveMaxPages(requestedMaxPages, classifyOnly: true);
+
+        Assert.Equal(1, resolved);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ResolveMaxPages_ZeroOrNegative_NotClassifyOnly_ReturnsNull(int requestedMaxPages)
+    {
+        var resolved = DocumentOrchestrator.ResolveMaxPages(requestedMaxPages, classifyOnly: false);
+
+        Assert.Null(resolved);
+    }
+}

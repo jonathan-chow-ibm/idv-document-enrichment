@@ -1,3 +1,4 @@
+using IdvEnrichment.Functions.Activities;
 using IdvEnrichment.Functions.Models;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask;
@@ -43,7 +44,7 @@ public sealed class DocumentOrchestrator
                 new ExtractContentInput(
                     downloadUrl,
                     message.FileName,
-                    FirstPageOnly: message.ClassifyOnly,
+                    MaxPages: ResolveMaxPages(message.MaxPages, message.ClassifyOnly),
                     ConvertedToPdf: downloadResult.IsConvertedToPdf,
                     OriginalUrl: downloadResult.OriginalUrl));
 
@@ -244,4 +245,12 @@ public sealed class DocumentOrchestrator
             throw;
         }
     }
+
+    // Resolves the MaxPages passed to ExtractContent: an explicit page limit from the queue message
+    // wins outright; otherwise a classify-only run still gets the 1-page cost optimization. Goes through
+    // HasPageLimit -- rather than a bare "message.MaxPages ?? ..." -- so a zero or negative override is
+    // treated the same as "unset" here as it is everywhere else MaxPages is checked; a plain ?? would let
+    // an explicit MaxPages: 0 slip past the classify-only default and trigger a full-document extraction.
+    internal static int? ResolveMaxPages(int? requestedMaxPages, bool classifyOnly) =>
+        ExtractContentActivity.HasPageLimit(requestedMaxPages) ? requestedMaxPages : (classifyOnly ? 1 : null);
 }

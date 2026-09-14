@@ -68,7 +68,8 @@ public sealed class ChunkOrchestrator
                     ModifiedDateTime: doc.LastModifiedDateTime,
                     Source: ProcessingSource.Batch,
                     BatchId: input.BatchId,
-                    ClassifyOnly: input.ClassifyOnly),
+                    ClassifyOnly: input.ClassifyOnly,
+                    MaxPages: input.MaxPages),
                 new SubOrchestrationOptions { InstanceId = $"{input.BatchId}:{doc.Id}" });
 
             return (new BatchDocumentEntry(

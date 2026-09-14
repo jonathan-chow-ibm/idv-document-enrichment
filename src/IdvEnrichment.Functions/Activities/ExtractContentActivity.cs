@@ -154,14 +154,15 @@ public sealed class ExtractContentActivity(
 
         var contentLength = response.Content.Headers.ContentLength ?? -1;
 
-        var route = DecidePdfRoute(contentLength, input.FirstPageOnly);
+        var route = DecidePdfRoute(contentLength, input.MaxPages);
         if (route == PdfSizeRoute.TooLargeForProcessing)
         {
             return ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0));
         }
 
-        // FirstPageOnly + over the local-parsing cap: DI takes the URL directly and only analyzes
-        // page 1 (Pages="1"), so there's no need to download/open the file locally at all.
+        // MaxPages set + over the local-parsing cap: DI takes the URL directly and only analyzes the
+        // requested page range (Pages="1" or "1-N"), so there's no need to download/open the file
+        // locally at all.
         if (route == PdfSizeRoute.UseDocumentIntelligence)
         {
             return await ExtractWithDocumentIntelligenceAsync(input, ct);
@@ -174,7 +175,7 @@ public sealed class ExtractContentActivity(
         {
             using var document = PdfDocument.Open(stream);
 
-            if (document.NumberOfPages > LocalPdfParsingPageCap && !input.FirstPageOnly)
+            if (document.NumberOfPages > LocalPdfParsingPageCap && !HasPageLimit(input.MaxPages))
             {
                 logger.LogWarning(
                     "{FileName} has {PageCount} pages, exceeding the local parsing cap of {PageCap}.",
@@ -184,7 +185,7 @@ public sealed class ExtractContentActivity(
                 return ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0));
             }
 
-            var pageLimit = input.FirstPageOnly ? 1 : document.NumberOfPages;
+            var pageLimit = HasPageLimit(input.MaxPages) ? Math.Min(input.MaxPages!.Value, document.NumberOfPages) : document.NumberOfPages;
             var pages = new List<PageTextInfo>(pageLimit);
             var textBuilder = new StringBuilder();
             foreach (var page in document.GetPages().Take(pageLimit))
@@ -199,7 +200,7 @@ public sealed class ExtractContentActivity(
 
             if (!PdfDigitalDetector.IsBornDigital(pages))
             {
-                return ExceedsDocumentIntelligencePageCap(document.NumberOfPages, input.FirstPageOnly)
+                return ExceedsDocumentIntelligencePageCap(document.NumberOfPages, input.MaxPages)
                     ? ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0))
                     : await ExtractWithDocumentIntelligenceAsync(input, ct);
             }
@@ -234,17 +235,25 @@ public sealed class ExtractContentActivity(
         return page.GetImages().Any(image => (image.BoundingBox.Width * image.BoundingBox.Height) / pageArea > FullPageImageAreaRatio);
     }
 
+    // Whether maxPages represents an actual page limit. Null, zero, and negative values all mean "no
+    // limit" -- a document can't have zero or fewer pages, so those inputs are treated as unbounded
+    // rather than as an error. Every place that branches on MaxPages goes through this -- including
+    // DocumentOrchestrator's classify-only default -- so "bounded" means the same thing everywhere
+    // (size/page caps, the DI Pages parameter, and the classify-only default all agree). Internal
+    // rather than private so DocumentOrchestrator can share it instead of duplicating the check.
+    internal static bool HasPageLimit(int? maxPages) => maxPages is { } n && n > 0;
+
     // Given the file's content-length (as reported by response headers, before downloading the body),
     // decide whether it's safe to attempt local PdfPig parsing, or whether it should be routed straight
     // to review without incurring any download or DI cost. Unavailable content-length (-1) is treated
     // conservatively, the same as exceeding the cap, since size can't be verified either way.
-    // When firstPageOnly is set, the DI cost/timeout risk these caps guard against doesn't apply — DI
-    // is bounded to page 1 regardless of the file's total size — so oversized files route to DI instead
-    // of giving up.
-    internal static PdfSizeRoute DecidePdfRoute(long contentLength, bool firstPageOnly = false) =>
+    // When maxPages is set, the DI cost/timeout risk these caps guard against doesn't apply — DI is
+    // bounded to that page count regardless of the file's total size — so oversized files route to DI
+    // instead of giving up.
+    internal static PdfSizeRoute DecidePdfRoute(long contentLength, int? maxPages = null) =>
         contentLength >= 0 && contentLength <= LocalPdfParsingSizeCapBytes
             ? PdfSizeRoute.AttemptLocalParsing
-            : firstPageOnly
+            : HasPageLimit(maxPages)
                 ? PdfSizeRoute.UseDocumentIntelligence
                 : ExceedsDocumentIntelligenceSizeCap(contentLength)
                     ? PdfSizeRoute.TooLargeForProcessing
@@ -255,19 +264,19 @@ public sealed class ExtractContentActivity(
 
     // Real-page-count counterpart to ExceedsDocumentIntelligenceSizeCap, used once the file is open and
     // the actual page count is known rather than estimated from bytes.
-    internal static bool ExceedsDocumentIntelligencePageCap(int pageCount, bool firstPageOnly) =>
-        pageCount > DocumentIntelligencePageCap && !firstPageOnly;
+    internal static bool ExceedsDocumentIntelligencePageCap(int pageCount, int? maxPages) =>
+        pageCount > DocumentIntelligencePageCap && !HasPageLimit(maxPages);
 
     // DI's Pages parameter is only reliable for PDF input -- it errors on Word documents, and "pages"
     // isn't a fixed, well-defined concept for flowing Office formats generally (unlike PDF/TIFF). So
-    // FirstPageOnly is only honored for PDFs here; other formats always get a full analysis regardless.
+    // MaxPages is only honored for PDFs here; other formats always get a full analysis regardless.
     // convertedToPdf counts as a PDF: the URL handed to DI points at a PDF Graph produced from the Office
     // file, so Pages is safe there even though the original file name still reads .docx/.pptx. Deriving
     // this from the name alone would silently bill a full-document analysis on every converted Office
-    // file that reaches DI, which is exactly what FirstPageOnly exists to prevent.
-    internal static string? BuildPagesParameter(string fileName, bool firstPageOnly, bool convertedToPdf = false) =>
-        firstPageOnly && (convertedToPdf || Path.GetExtension(fileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
-            ? "1"
+    // file that reaches DI, which is exactly what MaxPages exists to prevent.
+    internal static string? BuildPagesParameter(string fileName, int? maxPages, bool convertedToPdf = false) =>
+        HasPageLimit(maxPages) && (convertedToPdf || Path.GetExtension(fileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+            ? maxPages == 1 ? "1" : $"1-{maxPages}"
             : null;
 
     private async Task<ExtractionResult> ExtractWithDocumentIntelligenceAsync(ExtractContentInput input, CancellationToken ct)
@@ -275,7 +284,7 @@ public sealed class ExtractContentActivity(
         var options = new AnalyzeDocumentOptions("prebuilt-layout", new Uri(input.DocumentUrl))
         {
             OutputContentFormat = DocumentContentFormat.Markdown,
-            Pages = BuildPagesParameter(input.FileName, input.FirstPageOnly, input.ConvertedToPdf),
+            Pages = BuildPagesParameter(input.FileName, input.MaxPages, input.ConvertedToPdf),
         };
 
         // Bounds the call so a stalled/unresponsive service is treated as a failure (triggering the

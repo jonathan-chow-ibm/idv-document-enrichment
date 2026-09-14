@@ -17,7 +17,11 @@ public sealed record QueueMessage(
     [property: JsonPropertyName("attemptNumber")] int AttemptNumber = 1,
     // When true, the document is classified (and vision-overridden where applicable) and that
     // classification is written back, but Agent 2 metadata extraction never runs.
-    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false,
+    // Caps how many pages are read/analyzed, independent of ClassifyOnly. Null, zero, or negative all
+    // mean "no explicit limit" — DocumentOrchestrator still defaults a classify-only run to 1 page unless
+    // this overrides it with a positive value.
+    [property: JsonPropertyName("maxPages")] int? MaxPages = null);
 
 /// <summary>Input to kick off a batch run. Pass a SharePoint URL — can be a library or a folder within it.</summary>
 public sealed record BatchRequest(
@@ -26,7 +30,11 @@ public sealed record BatchRequest(
     [property: JsonPropertyName("maxConcurrency")] int? MaxConcurrency = null,
     [property: JsonPropertyName("chunkSize")] int? ChunkSize = null,
     [property: JsonPropertyName("itemIds")] IReadOnlyList<string>? ItemIds = null,
-    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false,
+    // Caps how many pages are read locally or sent to Document Intelligence for every document in the
+    // batch. Null, zero, or negative all leave the existing default (full document, or 1 page for a
+    // classify-only run) — only a positive value overrides it.
+    [property: JsonPropertyName("maxPages")] int? MaxPages = null);
 
 /// <summary>Resolved SharePoint target returned by the resolve activity.</summary>
 public sealed record ResolvedSharePointTarget(
@@ -115,9 +123,11 @@ public sealed record ProcessingMetrics(
 public sealed record ExtractContentInput(
     string DocumentUrl,
     string FileName = "",
-    // When true, only the first page is read/analyzed — used by classify-only runs, where a
-    // representative first page is enough signal and a full-document pass would be wasted cost.
-    bool FirstPageOnly = false,
+    // When set to a positive value, only the first MaxPages pages are read/analyzed — used by
+    // classify-only runs (where a representative first page or two is enough signal and a full-document
+    // pass would be wasted cost) and by callers that explicitly want to bound extraction to a page count.
+    // Null, zero, or negative all read/analyze the full document.
+    [property: JsonPropertyName("maxPages")] int? MaxPages = null,
     // True when DocumentUrl points at a PDF that Graph converted from Word/PowerPoint — a
     // converted PDF always has a real text layer, so it is routed through the PDF extraction path.
     [property: JsonPropertyName("convertedToPdf")] bool ConvertedToPdf = false,
@@ -168,7 +178,11 @@ public sealed record ChunkRequest(
     [property: JsonPropertyName("batchId")] string BatchId,
     [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
     [property: JsonPropertyName("maxConcurrency")] int MaxConcurrency,
-    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false,
+    // Caps how many pages are read locally or sent to Document Intelligence for every document in the
+    // chunk. Null, zero, or negative all leave the existing default (full document, or 1 page for a
+    // classify-only run) — only a positive value overrides it.
+    [property: JsonPropertyName("maxPages")] int? MaxPages = null);
 
 public sealed record ExtractDrawingDetailsInput(
     [property: JsonPropertyName("documentUrl")] string DocumentUrl,
