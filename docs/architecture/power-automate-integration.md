@@ -53,7 +53,7 @@ Detects when a document is created, modified, or moved in the target SharePoint 
 Trigger: SharePoint — When a file is created or modified in a folder
     ├── Scope: Target document library (Active Projects)
     │
-    ├── Condition: File extension in [.pdf, .docx, .doc, .xlsx, .pptx, .txt]
+    ├── Condition: File extension in [.pdf, .docx, .xlsx, .xlsm, .pptx, .txt]
     │   ├── If No → Terminate (skip unsupported formats)
     │   └── If Yes → Continue
     │

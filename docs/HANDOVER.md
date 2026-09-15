@@ -17,7 +17,7 @@ SharePoint document
   → Document Intelligence (OCR / text)            [or ClosedXML for spreadsheets]
   → Agent 1: classify document type               (gpt-4.1-mini)
   → [drawings only] render page 1 → vision        (gpt-4.1-mini, multimodal)
-  → Agent 2: extract ~26 metadata fields          (gpt-4o, strict JSON schema)
+  → Agent 2: extract ~26 metadata fields          (gpt-4.1, strict JSON schema)
   → route: high confidence → Write | low → Review
   → write metadata back to SharePoint columns     (Graph API)
 ```
@@ -130,6 +130,14 @@ These are significant and undocumented — **understand them before changing the
 - Vision override thresholds (0.7 / 0.8) are hardcoded rather than in `confidence_thresholds`
 
 ---
+
+> ⚠️ **Stale as of 2026-09-15 — quota constraint below no longer holds.** The analysis in this section
+> (including the Options A/B/C comparison and "Current decision") was written while `gpt-4.1` quota was
+> denied. Since then, `gpt-4.1` at **1,000,000 TPM** (GlobalStandard) plus `gpt-4.1-mini` at **5,000,000
+> TPM** (GlobalStandard) has been granted and deployed — Agent 2 now runs on `gpt-4.1`. Concurrency **25**
+> is validated in production at **53.4 docs/min** with zero HTTP 429s across ~4,470 documents. Quota is no
+> longer the binding constraint; Durable Functions concurrency settings are. The option comparison below
+> needs revisiting against this — it is left in place as a historical record, not current guidance.
 
 ## 6. The blocker you will hit: gpt-4.1 quota
 

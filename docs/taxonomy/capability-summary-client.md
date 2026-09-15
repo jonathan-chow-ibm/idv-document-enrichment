@@ -41,13 +41,14 @@ property, and ask Copilot questions grounded in these tags — without opening f
 | **Categorize Drawings** | We reliably tag *what kind* of drawing it is and headline figures from the title block; the engineering *discipline* and fine details are less reliable, and heavily graphical sheets may need a quick manual check. |
 | **Property tags on non-DD documents** | Parcel ID, Zoning, Acres, etc. appear on title/survey/plat/environmental documents — they'll be blank on documents that don't contain them (expected). |
 | **County / City** | We read State and Property automatically from folders; County and City are read from document content (reliable on title/survey/plat). *This is one item we'd like your input on.* |
+| **PowerPoint files (.pptx)** | We convert PowerPoint decks to PDF automatically and process them like any other document. Image-heavy decks (charts, diagrams, screenshots) may extract less reliably than text-heavy ones. |
 
 ### ⛔ Deferred — proposed as a later, validated phase
 
 | Capability | Why deferred |
 |---|---|
 | **Financial metrics inside pro formas** (IRR, yield-on-cost, NOI, cap rate) | Your financial models differ significantly across projects and vintages — the 2025 Risinger model and the 2014 Flowserve model are structured completely differently and label the same metrics differently. Reliable extraction needs a careful, validated build; a wrong financial figure is worse than none. Pro formas are still **categorized and searchable** — only the internal metrics are deferred. |
-| **Legacy / non-text formats** (`.doc`, `.msg` emails, `.dwg` CAD, `.pptx`, `.mpp`) | These formats can't be read directly (~5% of files). They'll be flagged for review or need conversion. |
+| **Legacy / non-text formats** (`.doc`, `.msg` emails, `.dwg` CAD, `.mpp`) | These formats can't be read directly (a small share of files). They'll be flagged for review or need conversion. |
 
 ---
 

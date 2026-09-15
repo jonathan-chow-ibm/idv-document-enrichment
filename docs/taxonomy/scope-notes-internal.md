@@ -52,7 +52,9 @@ their schema. Folder path gives State + metro (HOU/DFW) + Project. So:
 - **Classification is strong** — test runs hit 0.95–0.99 and correctly caught a mislabeled file by content
   (a title policy named "REVISED PROFORMA"). This is why categorization is the broad, committable capability.
 - **Format coverage** — of 839 sample files, ~5% are format-blocked for content reading: `.doc` (legacy Word;
-  DI supports `.docx` only), `.msg`, `.dwg`, `.pptx`, `.mpp`, `.zip`. These route to review or need conversion.
+  DI supports `.docx` only), `.msg`, `.dwg`, `.mpp`, `.zip`. These route to review or need conversion.
+  The ~5% was counted while `.pptx` was still format-blocked, so it now slightly overstates the gap —
+  PowerPoint is converted to PDF and processed. Recount against the 839-file sample if the figure matters.
   Note: `pdftotext`-measured "0-text" PDFs (scanned drawings) will recover text via Document Intelligence OCR.
 - **Drawings are image/CAD** — classify the drawing *type* from the title block; discipline + deep fields are
   unreliable; pure-raster sheets → review.

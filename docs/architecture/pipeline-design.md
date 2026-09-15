@@ -27,7 +27,7 @@ graph TB
         ExtractContent["ExtractContent\n(Doc Intelligence or ClosedXML)"]
         ClassifyType["Agent 1: ClassifyType\n(gpt-4.1-mini)"]
         ExtractDrawing["ExtractDrawingDetails\n(render page 1 → gpt-4.1-mini vision)\n[drawings / plats / surveys only]"]
-        ExtractMetadata["Agent 2: ExtractMetadata\n(gpt-4o, strict JSON schema)"]
+        ExtractMetadata["Agent 2: ExtractMetadata\n(gpt-4.1, strict JSON schema)"]
         RouteResult["RouteResult\n(confidence gate + App Insights)"]
         WriteMetadata["WriteMetadata\n(Graph API PATCH)"]
         RecordResult["RecordProcessingResult\n(Table Storage)"]
@@ -35,7 +35,7 @@ graph TB
 
     subgraph AIServices["Azure AI Services"]
         DocIntel["Azure AI Document Intelligence\n(prebuilt-layout, Markdown output)"]
-        OpenAI["Azure OpenAI\ngpt-4.1-mini + gpt-4o"]
+        OpenAI["Azure OpenAI\ngpt-4.1-mini + gpt-4.1"]
     end
 
     subgraph Storage["Azure Storage"]
@@ -92,7 +92,7 @@ graph TB
 | `WriteMetadata` | Writes metadata to SharePoint via `PATCH /drives/{driveId}/items/{itemId}/listItem/fields`. |
 | `RecordProcessingResult` | Writes `"success"` or `"review"` to Azure Table Storage tracking table. Used by FilterProcessed to skip re-processing. |
 | `ResolveSharePointTarget` | Parses SharePoint URL into siteId + driveId + optional folderPath via Graph API. |
-| `EnumerateLibrary` | Paginated Graph API query across all subfolders. Filters to: `.pdf`, `.docx`, `.doc`, `.xlsx`, `.xlsm`, `.pptx`, `.txt`. |
+| `EnumerateLibrary` | Paginated Graph API query across all subfolders. Filters to: `.pdf`, `.docx`, `.xlsx`, `.xlsm`, `.pptx`, `.txt`. |
 | `FilterProcessed` | Drops documents already in the Table Storage tracking table. |
 | `GenerateBatchReport` | Aggregates `BatchDocumentEntry` list into counts by routing decision and document type. Writes `BatchReport` JSON to Blob Storage. |
 

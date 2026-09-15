@@ -32,7 +32,7 @@ Configuration changes are covered in [runbook-configuration.md](runbook-configur
     "AZURE_TOKEN_CREDENTIALS": "AzureCliCredential",
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "OpenAiEndpoint": "https://oai-idv-enrich-dev.openai.azure.com/",
-    "OpenAiDeployment": "gpt-4o",
+    "OpenAiDeployment": "gpt-4.1",
     "OpenAiMiniDeployment": "gpt-4.1-mini",
     "DocIntelligenceEndpoint": "https://di-idv-enrich-dev.cognitiveservices.azure.com/",
     "TaxonomyBlobUrl": "C:\\...\\docs\\taxonomy\\taxonomy.yaml",
@@ -155,7 +155,8 @@ Accepts a whole library or a single folder. Optional: `maxConcurrency`, `chunkSi
 
 11. **Test with one document** via the test endpoint. Confirm `routingDecision` and `drawingClassification` look correct.
 
-12. **Set `BatchMaxConcurrency`** to match quota (see Throughput table — with 50K TPM on gpt-4o, use concurrency ≈ 7).
+12. **Set `BatchMaxConcurrency`** — quota is no longer the binding constraint (see Throughput table);
+    concurrency **25** is validated in production at 53.4 docs/min with zero 429s.
 
 13. **Start the first small batch** (~500 documents, one project folder) and monitor the review queue before scaling up.
 
@@ -207,9 +208,10 @@ Measured per document: Agent 1 ≈ 2,280 · Agent 2 ≈ 3,430 · vision ≈ 2,95
 | 20 | 43 | ~117K | ~147K |
 | 30 | 64 | ~175K | ~220K |
 
-**Current IDV quota:** `gpt-4.1-mini` **200K** ✅ · `gpt-4o` **50K** (maxed) · `gpt-4.1` **0** (denied — East US
-and East US 2 both refused on capacity). With Agent 2 on gpt-4o at 50K, concurrency ≈ **7** is the matched
-setting; 10 is already over-subscribed.
+**Current IDV quota:** `gpt-4.1-mini` **5,000,000 TPM** (GlobalStandard) · `gpt-4.1` **1,000,000 TPM**
+(GlobalStandard). Quota is no longer the binding constraint on throughput — Durable Functions concurrency
+settings are. Concurrency **25** is validated in production (53.4 docs/min, zero 429s across two batch
+runs totalling ~4,470 documents); headroom above 25 likely exists but hasn't been measured.
 
 Also available and unused: **~50M TPM of Global Batch quota** on gpt-4.1 (50% cheaper, 24h turnaround) —
 would require restructuring the AI calls to the async Batch API.
@@ -222,19 +224,27 @@ is not yet established. Recompute against the real number before planning a full
 Measured per document: Agent 1 ≈ 2,280 · Agent 2 ≈ 3,430 · vision ≈ 2,950 (on ~15% of docs) →
 **~6,150 tokens/document** across all calls.
 
+This is now a **measured** rate, not one derived from TPM quota: the second production batch run
+processed 2,547 documents at `maxConcurrency` 25 and **53.4 docs/min** with zero HTTP 429s, so that rate —
+not a quota calculation — is the basis for the elapsed-time column below.
+
+⚠️ **Both runs used `maxPages: 10`.** An uncapped run reads every page — more PdfPig parsing, more
+Document Intelligence pages on scans, and larger extraction prompts per document — so 53.4 docs/min is
+an optimistic ceiling, not a full-run rate. Re-measure on an uncapped batch before committing to a
+schedule from the table below.
+
 ```
 Agent 2 tokens     = docs × 3,430
-Elapsed (gpt-4o)   = docs ÷ 14.6 docs/min      # 50,000 TPM ÷ 3,430
-Elapsed (mini all) = docs ÷ 32.5 docs/min      # 200,000 TPM ÷ 6,150
+Elapsed (measured) = docs ÷ 53.4 docs/min      # measured @ concurrency 25, maxPages 10
 Review items       = docs × review-rate        # ~15% observed pre-tuning
 ```
 
-| Corpus | Agent 2 tokens | Elapsed @ gpt-4o 50K | Review @ 15% |
+| Corpus | Agent 2 tokens | Elapsed @ 53.4 docs/min *(measured, `maxPages` 10)* | Review @ 15% |
 |--:|--:|--:|--:|
-| 117,752 *(one site)* | 404 M | ~5.6 days | ~17,700 |
-| 250,000 | 858 M | ~12 days | ~37,500 |
-| 500,000 | 1.72 B | ~24 days | ~75,000 |
-| 1,000,000 | 3.43 B | ~48 days | ~150,000 |
+| 117,752 *(one site)* | 404 M | ~1.5 days | ~17,700 |
+| 250,000 | 858 M | ~3.25 days | ~37,500 |
+| 500,000 | 1.72 B | ~6.5 days | ~75,000 |
+| 1,000,000 | 3.43 B | ~13 days | ~150,000 |
 
 **Two consequences at scale:**
 
@@ -366,7 +376,10 @@ customEvents
 
 ## Known limitations
 
-- **~5% of file types can't be read**: `.doc` (legacy), `.msg`, `.dwg`, `.pptx`, `.mpp`, `.zip` → route to review
+- **Some file types can't be read**: `.doc` (legacy), `.msg`, `.dwg`, `.mpp`, `.zip` → route to review.
+  `.pptx` *is* supported — it's converted to PDF before extraction — but image-heavy decks can still fail
+  born-digital detection after conversion and route to Document Intelligence, and chart/diagram content
+  may extract thinly.
 - **Multi-page drawings**: only page 1 is rendered for vision, so a permit set yields cover-sheet metadata
 - **Spreadsheets >50 MB** are rejected; large workbooks are truncated to a 24K budget with priority sheets favoured
 - **Pro forma financial metrics** (IRR, yield, NOI) are **not** extracted — deferred; models vary too much across projects

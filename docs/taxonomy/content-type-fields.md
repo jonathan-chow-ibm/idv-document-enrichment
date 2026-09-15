@@ -57,8 +57,10 @@ These surfaced in **every** analysis group and matter more than any single field
    forced into a number, and will often land below confidence threshold → human review. That is correct behavior.
 
 7. **Format limitations are real and concentrated in value.**
-   - `.docx` (Development/JV agreements, many contracts) — **not readable** by the current extraction path; needs a DOCX text extractor. (Note: DI supports DOCX but *not* legacy `.doc`.)
-   - `.pptx` (proposals/pitch decks) — not extractable without conversion; image/chart heavy.
+   - `.docx` (Development/JV agreements, many contracts) — converts to PDF automatically before extraction,
+     so these are readable. (Note: legacy `.doc` is still unsupported — it is not in the enumeration allow-list.)
+   - `.pptx` (proposals/pitch decks) — converts to PDF automatically before extraction; still image/chart heavy,
+     so image-heavy decks extract thinly.
    - `.msg` (much correspondence) — not readable; needs MSG→EML/PDF conversion.
    - `.xlsm/.xlsx` (financial models) — handled natively via ClosedXML (good).
    - **Drawings split into two classes:** native-CAD/vector PDFs (survey exhibits, typed plat pages) extract cleanly;
@@ -358,7 +360,7 @@ These surfaced in **every** analysis group and matter more than any single field
 - **Gotchas:** Image-heavy (renderings/maps); text often embedded in graphics → OCR fidelity matters. No document date (only "v11").
 
 ### 6.2 Proposal / Pitch Deck
-*Samples are `.pptx` — **inferred, not sample-grounded** (unreadable format)*
+*Samples are `.pptx` — **inferred, not sample-grounded** (no `.pptx` samples were reviewed)*
 
 | Field | Example value | Kind | Reliability |
 |---|---|---|---|
@@ -369,7 +371,7 @@ These surfaced in **every** analysis group and matter more than any single field
 | Presenter | Presenting firm / individual | Shared → Counterparty | low (inferred) |
 | DocumentDate | Deck date | Shared → DocumentDate | low (inferred) |
 
-- **Gotchas:** `.pptx` **not readable** by the current pipeline — needs conversion to PDF (or PowerPoint parser). Chart/image heavy even after conversion. All fields above are document-type knowledge, not evidence.
+- **Gotchas:** `.pptx` converts to PDF automatically before extraction; the residual gotcha is thin extraction on chart/image-heavy decks. All fields above are document-type knowledge, not evidence.
 
 ### 6.3 Entity / Corporate Governance
 *Sample: `04...11-Misc\IDV Risinger LLC - TX Certificate of Formation (filed).pdf` (grounded)*
@@ -434,8 +436,9 @@ These surfaced in **every** analysis group and matter more than any single field
 3. **Add a `Status` vocabulary** covering Draft / Proposal / Executed / Recorded / Commitment / Conditionally Approved —
    several types hinge on it and it's high-value for Copilot ("show me *executed* term sheets").
 4. **Store resistant fields as text, not numbers** — tiered commissions, "least-of" loan amounts, financial-metric tables.
-5. **Close the extractor format gaps** — add DOCX and (via conversion) PPTX/MSG handling; add the unsupported-format
-   guard so `.dwg/.msg/.zip/.pptx` route to review cleanly instead of erroring.
+5. **Close the remaining extractor format gaps** — DOCX and PPTX now convert to PDF automatically; MSG
+   handling is still missing. Add the unsupported-format
+   guard so `.dwg/.msg/.zip` route to review cleanly instead of erroring.
 6. **Treat filename/folder as a weak prior, not truth** — content-based routing only (the "Bank Budget = title policy"
    trap). Folder can seed DealType, but verify against content.
 7. **Consider sub-types** for Closing Document (deed vs settlement statement) and Title & Survey (commitment vs drawing) —
