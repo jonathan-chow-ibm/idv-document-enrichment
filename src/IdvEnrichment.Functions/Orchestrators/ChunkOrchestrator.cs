@@ -8,6 +8,12 @@ namespace IdvEnrichment.Functions.Orchestrators;
 
 public sealed class ChunkOrchestrator
 {
+    // Task.WhenAll below waits on every document in a group, so a single wedged sub-orchestration
+    // holds the whole chunk — and therefore the batch — open indefinitely. Generous enough that a
+    // slow-but-healthy document still finishes: the longest activity is bounded by the host's
+    // 10-minute functionTimeout, and a document runs several of them in sequence.
+    private static readonly TimeSpan DocumentTimeout = TimeSpan.FromMinutes(20);
+
     [Function(nameof(ChunkProcessingOrchestrator))]
     public async Task<ChunkResult> ChunkProcessingOrchestrator(
         [OrchestrationTrigger] TaskOrchestrationContext ctx)
@@ -55,7 +61,7 @@ public sealed class ChunkOrchestrator
     {
         try
         {
-            var result = await ctx.CallSubOrchestratorAsync<EnrichmentResult>(
+            var documentTask = ctx.CallSubOrchestratorAsync<EnrichmentResult>(
                 "DocumentProcessingOrchestrator",
                 new QueueMessage(
                     DocumentId: doc.Id,
@@ -71,6 +77,24 @@ public sealed class ChunkOrchestrator
                     ClassifyOnly: input.ClassifyOnly,
                     MaxPages: input.MaxPages),
                 new SubOrchestrationOptions { InstanceId = $"{input.BatchId}:{doc.Id}" });
+
+            using var timerCts = new CancellationTokenSource();
+            var timeoutTask = ctx.CreateTimer(ctx.CurrentUtcDateTime.Add(DocumentTimeout), timerCts.Token);
+
+            if (await Task.WhenAny(documentTask, timeoutTask) == timeoutTask)
+            {
+                // The when-any pattern can't cancel an execution that's already in flight, so the
+                // sub-orchestration is left to finish (or stay wedged) on its own; the chunk records
+                // the document as failed and moves on rather than waiting on it.
+                log.LogWarning(
+                    "Document {DocId} exceeded {TimeoutMinutes} minutes; abandoning it",
+                    doc.Id, DocumentTimeout.TotalMinutes);
+                return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
+            }
+
+            // Unexpired timers keep the orchestration in Running until they fire.
+            timerCts.Cancel();
+            var result = await documentTask;
 
             return (new BatchDocumentEntry(
                 result.TypeClassification.DocumentType,

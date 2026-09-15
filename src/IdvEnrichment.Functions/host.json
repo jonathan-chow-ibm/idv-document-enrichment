@@ -3,6 +3,7 @@
   "extensions": {
     "durableTask": {
       "hubName": "IdvEnrichmentTaskHub",
+      "workItemQueueVisibilityTimeout": "00:15:00",
       "maxConcurrentActivityFunctions": 10,
       "maxConcurrentOrchestratorFunctions": 5
     },

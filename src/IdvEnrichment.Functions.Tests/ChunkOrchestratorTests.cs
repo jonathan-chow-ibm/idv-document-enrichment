@@ -70,4 +70,70 @@ public class ChunkOrchestratorTests
         var candidate = Assert.Single(entry.Candidates);
         Assert.Equal("Proposal/Pitch Deck", candidate.DocumentType);
     }
+
+    private static ChunkRequest BuildRequest(LibraryDocument doc) =>
+        new(Documents: [doc],
+            BatchId: "batch-1",
+            Target: new ResolvedSharePointTarget("site", "drive", null, "Site", "Library"),
+            MaxConcurrency: 1);
+
+    private static EnrichmentResult BuildEnrichmentResult() =>
+        new(DocumentId: "doc-1",
+            FileName: "a.pdf",
+            Extraction: new ExtractionResult("text", PageCount: 1, TextLength: 4, KeyValuePairs: []),
+            TypeClassification: new TypeClassificationResult(DocumentType.LetterOfIntent, 0.95, "clear match"),
+            Metadata: null,
+            ProcessingMetrics: new ProcessingMetrics(),
+            RoutingDecision: RoutingDecision.Write,
+            LowConfidenceCategories: []);
+
+    [Fact]
+    public async Task ChunkProcessingOrchestrator_SubOrchestrationNeverCompletes_RecordsDocumentAsFailed()
+    {
+        var doc = new LibraryDocument("doc-1", "a.pdf", "application/pdf", DateTimeOffset.UnixEpoch);
+        var ctx = new FakeOrchestrationContext(BuildRequest(doc))
+        {
+            // A wedged sub-orchestration: without the timer guard the chunk would await this forever.
+            SubOrchestratorHandler = (_, _) => new TaskCompletionSource<object?>().Task,
+        };
+        ctx.FireTimers();
+
+        var result = await new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+
+        Assert.Equal(1, result.Errors);
+        Assert.Equal("doc-1", Assert.Single(result.FailedDocuments).DocumentId);
+        Assert.Empty(result.Results);
+    }
+
+    [Fact]
+    public async Task ChunkProcessingOrchestrator_SubOrchestrationCompletes_CancelsTimerAndKeepsResult()
+    {
+        var doc = new LibraryDocument("doc-1", "a.pdf", "application/pdf", DateTimeOffset.UnixEpoch);
+        var ctx = new FakeOrchestrationContext(BuildRequest(doc))
+        {
+            SubOrchestratorHandler = (_, _) => Task.FromResult<object?>(BuildEnrichmentResult()),
+        };
+
+        var result = await new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+
+        Assert.Equal(0, result.Errors);
+        Assert.Single(result.Results);
+        // An unexpired timer would hold the orchestration in Running until its deadline passed.
+        Assert.True(ctx.TimerCancelled);
+    }
+
+    [Fact]
+    public async Task ChunkProcessingOrchestrator_ArmsTimeoutFromOrchestrationClock()
+    {
+        var doc = new LibraryDocument("doc-1", "a.pdf", "application/pdf", DateTimeOffset.UnixEpoch);
+        var ctx = new FakeOrchestrationContext(BuildRequest(doc))
+        {
+            SubOrchestratorHandler = (_, _) => Task.FromResult<object?>(BuildEnrichmentResult()),
+        };
+
+        await new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+
+        // Deterministic replay depends on the deadline coming off CurrentUtcDateTime, not DateTime.UtcNow.
+        Assert.Equal(ctx.CurrentUtcDateTime.AddMinutes(20), Assert.Single(ctx.TimerDeadlines));
+    }
 }

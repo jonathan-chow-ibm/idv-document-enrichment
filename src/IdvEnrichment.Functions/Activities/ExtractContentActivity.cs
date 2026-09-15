@@ -287,9 +287,13 @@ public sealed class ExtractContentActivity(
             Pages = BuildPagesParameter(input.FileName, input.MaxPages, input.ConvertedToPdf),
         };
 
-        // Bounds the call so a stalled/unresponsive service is treated as a failure (triggering the
-        // orchestrator's existing retry policy) instead of hanging indefinitely — DI runs can legitimately
-        // take longer than an LLM call on large scans, hence the longer timeout than OpenAiRetryHelper's.
+        // Bounds the call so a stalled/unresponsive service fails the document — ExtractContent gets no
+        // retry (see DocumentOrchestrator), so this surfaces as a failed entry in the batch report — rather
+        // than hanging until the host's 10-minute functionTimeout kills the worker mid-activity, which
+        // leaves the work item to be redelivered while the billed DI job runs on regardless. Must stay
+        // comfortably under both functionTimeout and durableTask.workItemQueueVisibilityTimeout in
+        // host.json. Longer than OpenAiRetryHelper's because DI runs legitimately take longer on large
+        // scans than an LLM call.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(DocumentIntelligenceTimeout);
 
