@@ -119,27 +119,45 @@ Accepts a whole library or a single folder. Optional: `maxConcurrency`, `chunkSi
    ./scripts/Grant-GraphPermissions.ps1 -FunctionAppName <name> -ResourceGroupName <rg>
    ```
 
-5. **Dry-run column provisioning** — review the output before making any changes:
+5. **List the target libraries** — read-only, no writes on any code path. Confirm what would be
+   provisioned before anything else:
    ```powershell
    ./scripts/Provision-SharePointSchema.ps1 `
-     -SiteUrl "tenant.sharepoint.com:/sites/SiteName" `
-     -DocumentLibraryName "Documents" -DryRun
+     -SiteUrl "tenant.sharepoint.com:/sites/SiteName" -ListLibraries
+   ```
+   Each library prints as `[target]` or `[skip] <reason>`. SharePoint system libraries are
+   refused on every code path (matched by server-relative URL, not display name); `Documents`,
+   `Template`, `Images` and `Pages` are skipped via the overridable `-ExcludeLibraries` default.
+   > On `idvllc.sharepoint.com:/sites/IDVProjects` this returns 73 libraries — one per project.
+   > `-DocumentLibraryName "Documents"` is the **wrong** target there: that library holds no
+   > project content. Use `-AllLibraries`.
+
+6. **Dry-run provisioning** — review the output before making any changes. Add any non-project
+   libraries `-ListLibraries` surfaced to `-ExcludeLibraries`:
+   ```powershell
+   ./scripts/Provision-SharePointSchema.ps1 `
+     -SiteUrl "tenant.sharepoint.com:/sites/SiteName" -AllLibraries -DryRun `
+     -ExcludeLibraries 'Documents','Template','Dead Deals','IDV Property Stat Sheet'
    ```
 
-6. **Run without `-DryRun`** once the dry-run output looks correct.
+7. **Run without `-DryRun`** once the dry-run output looks correct. A full run over 69 libraries
+   makes ~420 Graph writes (one `contentTypesEnabled` PATCH plus five `addCopy` POSTs each) and
+   may hit 429 throttling. The script is idempotent — columns, site content types and library
+   content types are all skipped when already present — so **re-run it** after a throttle or
+   transient failure rather than trying to work out how far it got.
 
-7. **Create the "Under Review" filtered library view** — filter on `AIProcessingStatus = "Under Review"` (ADR-006 — inline review, no separate list).
+8. **Create the "Under Review" filtered library view** — filter on `AIProcessingStatus = "Under Review"` (ADR-006 — inline review, no separate list).
 
-8. **Set folder default column values** for `State`, `PropertyName`, `ProjectName` on each project folder using `Set-PnPDefaultColumnValues` (see configuration runbook).
+9. **Set folder default column values** for `State`, `PropertyName`, `ProjectName` on each project folder using `Set-PnPDefaultColumnValues` (see configuration runbook).
    > ⚠️ Folder defaults are **not retroactive** — existing documents need a back-fill.
 
-9. **Map columns to managed properties** in the SharePoint search schema — tenant-admin task, required for Microsoft 365 Copilot grounding.
+10. **Map columns to managed properties** in the SharePoint search schema — tenant-admin task, required for Microsoft 365 Copilot grounding.
 
-10. **Test with one document** via the test endpoint. Confirm `routingDecision` and `drawingClassification` look correct.
+11. **Test with one document** via the test endpoint. Confirm `routingDecision` and `drawingClassification` look correct.
 
-11. **Set `BatchMaxConcurrency`** to match quota (see Throughput table — with 50K TPM on gpt-4o, use concurrency ≈ 7).
+12. **Set `BatchMaxConcurrency`** to match quota (see Throughput table — with 50K TPM on gpt-4o, use concurrency ≈ 7).
 
-12. **Start the first small batch** (~500 documents, one project folder) and monitor the review queue before scaling up.
+13. **Start the first small batch** (~500 documents, one project folder) and monitor the review queue before scaling up.
 
 ---
 

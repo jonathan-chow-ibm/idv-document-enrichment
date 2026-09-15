@@ -14,7 +14,19 @@
 
 .PARAMETER AllLibraries
     Discover and provision every visible document library on the site. Mutually exclusive
-    with -DocumentLibraryName. System/hidden libraries are skipped automatically.
+    with -DocumentLibraryName. SharePoint system libraries (Site Assets, Style Library, Site
+    Pages, Form Templates, _catalogs, Preservation Hold) are never provisioned on any code path
+    — they are matched by server-relative URL, not display name. Hidden libraries are skipped.
+
+.PARAMETER ExcludeLibraries
+    Additional libraries to treat as non-project content. Judgement calls only — system
+    libraries are already excluded structurally. Defaults to "Documents", "Template", "Images",
+    "Pages", because on these sites project content lives in per-project libraries; override it
+    for a site where "Documents" is the real library.
+
+.PARAMETER ListLibraries
+    List the site's document libraries showing which would be targeted and which skipped (and
+    why), then exit without changing anything. Use this before a real run.
 
 .PARAMETER DryRun
     If set, shows what would be created without making changes.
@@ -26,8 +38,10 @@
     .\Provision-SharePointSchema.ps1 -SiteUrl "contoso.sharepoint.com:/sites/ActiveProjects" -AllLibraries
     # Dry run across all libraries
     .\Provision-SharePointSchema.ps1 -SiteUrl "contoso.sharepoint.com:/sites/ActiveProjects" -AllLibraries -DryRun
+    # See what would be targeted before running anything
+    .\Provision-SharePointSchema.ps1 -SiteUrl "contoso.sharepoint.com:/sites/ActiveProjects" -ListLibraries
 #>
-
+[CmdletBinding(DefaultParameterSetName = "Single")]
 param(
     [Parameter(Mandatory)]
     [string]$SiteUrl,
@@ -38,8 +52,15 @@ param(
     [Parameter(ParameterSetName = "All")]
     [switch]$AllLibraries,
 
+    # Judgement calls only — libraries that MIGHT hold project content but don't on these sites.
+    # SharePoint's own system libraries are excluded structurally by $systemLibraryPaths below
+    # and don't belong here. "Documents" is listed because on the IDV project sites content
+    # lives in per-project libraries, but it stays overridable for sites where it doesn't.
     [Parameter(ParameterSetName = "All")]
-    [string[]]$ExcludeLibraries = @(),
+    [string[]]$ExcludeLibraries = @('Documents', 'Template', 'Images', 'Pages'),
+
+    # List the site's document libraries with their target/skip classification, then exit.
+    [switch]$ListLibraries,
 
     [switch]$DryRun
 )
@@ -53,24 +74,74 @@ $site = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0
 $siteId = $site.id
 Write-Host "Site: $($site.displayName) ($siteId)" -ForegroundColor Cyan
 
+# --- System libraries: never provisioned, regardless of parameters ----------------------------
+# Matched on the library's server-relative URL rather than its display name. Display names are
+# localized ("Documents" is "Documentos" on an es-ES tenant) and users rename libraries, so a
+# name-based rule silently stops protecting; these URLs are fixed by SharePoint.
+# Lists carrying the Graph `system` facet are already omitted from GET /sites/{id}/lists unless
+# `system` is in $select, so this only needs to catch the built-ins Graph still returns.
+# "Documents" is deliberately NOT here — it is a legitimate content library on other sites and
+# is the -DocumentLibraryName default. Excluding it is a per-site judgement (-ExcludeLibraries).
+$systemLibraryPaths = @(
+    '/SiteAssets', '/Style Library', '/FormServerTemplates', '/SitePages',
+    '/SiteCollectionDocuments', '/PreservationHoldLibrary', '/Preservation Hold Library',
+    '/_catalogs', '/Custom Office Templates', '/DO_NOT_DELETE_SPLIST_SITECOLLECTION_AGGREGATED_CONTENTTYPES'
+)
+
+function Test-IsSystemLibrary {
+    param($List)
+    if ($List.system) { return $true }
+    if (-not $List.webUrl) { return $false }
+    $path = [System.Uri]::UnescapeDataString(([System.Uri]$List.webUrl).AbsolutePath)
+    foreach ($systemPath in $systemLibraryPaths) {
+        if ($path -eq $systemPath -or $path.EndsWith($systemPath) -or $path -like "*$systemPath/*") { return $true }
+    }
+    return $false
+}
+
 # --- Build target library list ---
 $allSiteLists = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists").value
+$allDocLibraries = @($allSiteLists | Where-Object { $_.list.template -eq "documentLibrary" })
+
+if ($ListLibraries) {
+    Write-Host "`nDocument libraries on this site:" -ForegroundColor Cyan
+    foreach ($lib in ($allDocLibraries | Sort-Object displayName)) {
+        $reason = if (Test-IsSystemLibrary $lib) { "system (never provisioned)" }
+                  elseif ($lib.list.hidden)      { "hidden (skipped)" }
+                  elseif ($ExcludeLibraries -contains $lib.displayName) { "in -ExcludeLibraries" }
+                  else { "" }
+        $colour = if ($reason) { "DarkGray" } else { "White" }
+        $label  = if ($reason) { "  [skip]   {0,-38} {1}" } else { "  [target] {0,-38} {1}" }
+        Write-Host ($label -f $lib.displayName, $reason) -ForegroundColor $colour
+    }
+    Write-Host ""
+    return
+}
+
+# Applied to every code path: a system library is never a provisioning target.
+$systemLibraries = @($allDocLibraries | Where-Object { Test-IsSystemLibrary $_ })
+$candidateLists  = @($allDocLibraries | Where-Object { -not (Test-IsSystemLibrary $_) })
+if ($systemLibraries.Count -gt 0) {
+    Write-Host "System libraries skipped: $($systemLibraries.displayName -join ', ')" -ForegroundColor DarkGray
+}
 
 if ($AllLibraries) {
-    # Discover all visible document libraries; skip hidden/system ones
-    $targetLists = $allSiteLists | Where-Object {
-        $_.list.template -eq "documentLibrary" -and -not $_.list.hidden
-    }
+    # Discover all visible document libraries; hidden ones are not provisioning targets either
+    $targetLists = $candidateLists | Where-Object { -not $_.list.hidden }
     if ($ExcludeLibraries.Count -gt 0) {
         $targetLists = $targetLists | Where-Object { $ExcludeLibraries -notcontains $_.displayName }
     }
     if (-not $targetLists) { throw "No visible document libraries found on this site after exclusions." }
-    Write-Host "Libraries discovered ($($targetLists.Count)):" -ForegroundColor Cyan
+    Write-Host "Libraries discovered ($(@($targetLists).Count)):" -ForegroundColor Cyan
     foreach ($l in $targetLists) { Write-Host "  - $($l.displayName)" -ForegroundColor White }
 } else {
-    $targetLists = $allSiteLists | Where-Object { $_.displayName -eq $DocumentLibraryName }
+    $targetLists = $candidateLists | Where-Object { $_.displayName -eq $DocumentLibraryName }
     if (-not $targetLists) {
-        throw "Library '$DocumentLibraryName' not found. Available: $($allSiteLists.displayName -join ', ')"
+        # Distinguish "system library, refused" from "no such library" — the fix differs.
+        if ($systemLibraries.displayName -contains $DocumentLibraryName) {
+            throw "'$DocumentLibraryName' is a SharePoint system library and is never provisioned."
+        }
+        throw "Library '$DocumentLibraryName' not found. Available: $($candidateLists.displayName -join ', ')"
     }
     Write-Host "Library: $($targetLists.displayName)" -ForegroundColor Cyan
 }
@@ -308,23 +379,24 @@ foreach ($targetList in $targetLists) {
         Write-Host "    [OK] contentTypesEnabled = true" -ForegroundColor DarkGray
     }
 
-    # Fetch existing library CTs once per library
-    $existingLibCtNames = @()
-    if (-not $DryRun) {
-        $existingLibCTs = (Invoke-MgGraphRequest -Method GET `
-            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes").value
-        $existingLibCtNames = $existingLibCTs | Select-Object -ExpandProperty name
-    }
+    # Fetch existing library CTs once per library. This is a read, so it runs in dry run too —
+    # without it, dry run reports "would addCopy" for content types the library already has.
+    $existingLibCTs = (Invoke-MgGraphRequest -Method GET `
+        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes").value
+    $existingLibCtNames = @($existingLibCTs | Where-Object { $_.name } | Select-Object -ExpandProperty name)
 
     foreach ($ctResult in $ctResults) {
         $ctName = $ctResult.Name
         $ctId   = $ctResult.Id
-        if (-not $ctId) { continue }
 
         if ($existingLibCtNames -contains $ctName) {
             Write-Host "    [EXISTS] $ctName" -ForegroundColor Yellow
         } elseif ($DryRun) {
+            # $ctId is null for site CTs a real run would have created first — report them
+            # anyway, otherwise a dry run against an unprovisioned site says nothing here.
             Write-Host "    [DRY RUN] Would addCopy '$ctName'" -ForegroundColor DarkGray
+        } elseif (-not $ctId) {
+            Write-Host "    [SKIP] $ctName — site content type id unknown" -ForegroundColor Yellow
         } else {
             $addCopyBody = @{ contentType = "https://graph.microsoft.com/v1.0/sites/$siteId/contentTypes/$ctId" } | ConvertTo-Json
             Invoke-MgGraphRequest -Method POST `
