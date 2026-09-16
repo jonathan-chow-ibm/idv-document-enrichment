@@ -58,4 +58,48 @@ public class BatchOrchestratorTests
 
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void ResolveMaxConcurrency_RequestedPositive_UsesRequestedValue()
+    {
+        var result = BatchOrchestrator.ResolveMaxConcurrency(requested: 5, configured: 10);
+
+        Assert.Equal(5, result);
+    }
+
+    [Fact]
+    public void ResolveMaxConcurrency_RequestedNull_FallsBackToConfiguredValue()
+    {
+        var result = BatchOrchestrator.ResolveMaxConcurrency(requested: null, configured: 10);
+
+        Assert.Equal(10, result);
+    }
+
+    [Fact]
+    public void ResolveMaxConcurrency_RequestedZero_Throws()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => BatchOrchestrator.ResolveMaxConcurrency(requested: 0, configured: 10));
+
+        Assert.Contains("MaxConcurrency", ex.Message);
+    }
+
+    [Fact]
+    public void ResolveMaxConcurrency_RequestedNegative_Throws()
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => BatchOrchestrator.ResolveMaxConcurrency(requested: -1, configured: 10));
+    }
+
+    [Fact]
+    public void ResolveMaxConcurrency_RequestedNullAndConfiguredZero_Throws()
+    {
+        // The request-path guard in HttpBatchTrigger only validates an explicit MaxConcurrency; a
+        // misconfigured BatchMaxConcurrency app setting reaches this helper unvalidated whenever the
+        // request omits MaxConcurrency, so it must be rejected here too.
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => BatchOrchestrator.ResolveMaxConcurrency(requested: null, configured: 0));
+
+        Assert.Contains("BatchMaxConcurrency", ex.Message);
+    }
 }

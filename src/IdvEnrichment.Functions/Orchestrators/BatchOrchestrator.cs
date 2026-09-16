@@ -37,7 +37,7 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
 
         log.LogInformation("Batch {BatchId}: {Total} documents to process", batchId, unprocessed.Count);
 
-        var maxConcurrency = input.MaxConcurrency ?? settings.Value.BatchMaxConcurrency;
+        var maxConcurrency = ResolveMaxConcurrency(input.MaxConcurrency, settings.Value.BatchMaxConcurrency);
         var chunkSize = input.ChunkSize ?? settings.Value.BatchChunkSize;
         var startedAt = ctx.CurrentUtcDateTime;
 
@@ -73,6 +73,23 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
             "GenerateBatchReport",
             new GenerateBatchReportInput(batchId, input.Url, startedAt, results, errors, failedDocuments, lowConfidenceClassifications),
             retry);
+    }
+
+    // A non-positive value here silently degrades the chunk orchestrator's sliding window to a no-op
+    // that returns an empty, error-free result -- the request path rejects this at the HTTP boundary,
+    // but a misconfigured BatchMaxConcurrency app setting reaches this line unvalidated when the
+    // request omits MaxConcurrency, so it must be checked here too.
+    internal static int ResolveMaxConcurrency(int? requested, int configured)
+    {
+        var resolved = requested ?? configured;
+        if (resolved <= 0)
+        {
+            throw new InvalidOperationException(requested is null
+                ? $"BatchMaxConcurrency configuration must be a positive integer (was {configured})."
+                : $"MaxConcurrency must be a positive integer (was {requested}).");
+        }
+
+        return resolved;
     }
 
     // Scopes a re-run to only the requested item IDs, e.g. retrying documents that failed in a prior batch.
