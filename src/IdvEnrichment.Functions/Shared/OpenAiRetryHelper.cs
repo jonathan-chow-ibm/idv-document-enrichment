@@ -1,5 +1,6 @@
 using Azure;
 using Microsoft.Extensions.Logging;
+using System.ClientModel;
 using System.Globalization;
 
 namespace IdvEnrichment.Functions.Shared;
@@ -46,6 +47,25 @@ public static class OpenAiRetryHelper
 
                 await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
             }
+            catch (ClientResultException ex) when (ex.Status == 429)
+            {
+                // The OpenAI SDK (System.ClientModel) throws ClientResultException, not RequestFailedException --
+                // an unrelated sibling type with the same Status/GetRawResponse shape. Without this catch, a 429
+                // from the chat completion call bypassed retry entirely and failed the whole activity.
+                if (attempt == MaxAttempts)
+                {
+                    throw;
+                }
+
+                string? requestId = null;
+                ex.GetRawResponse()?.Headers.TryGetValue("x-ms-client-request-id", out requestId);
+                var retryAfter = GetRetryAfterSeconds(ex);
+                logger.LogWarning(
+                    "OpenAI rate limit hit (attempt {Attempt}/{Max}); waiting {Seconds}s (RequestId: {RequestId})",
+                    attempt, MaxAttempts, retryAfter, requestId ?? "unknown");
+
+                await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
+            }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 // timeoutCts fired, not the caller's own token — treat as a retryable, bounded failure.
@@ -65,6 +85,18 @@ public static class OpenAiRetryHelper
     }
 
     private static double GetRetryAfterSeconds(RequestFailedException ex)
+    {
+        // Retry-After can be an HTTP-date; we only handle the delta-seconds form here
+        if (ex.GetRawResponse()?.Headers.TryGetValue("Retry-After", out var value) == true
+            && double.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var seconds))
+        {
+            return Math.Clamp(seconds, 1, MaxRetryAfterSeconds);
+        }
+
+        return 30;
+    }
+
+    private static double GetRetryAfterSeconds(ClientResultException ex)
     {
         // Retry-After can be an HTTP-date; we only handle the delta-seconds form here
         if (ex.GetRawResponse()?.Headers.TryGetValue("Retry-After", out var value) == true

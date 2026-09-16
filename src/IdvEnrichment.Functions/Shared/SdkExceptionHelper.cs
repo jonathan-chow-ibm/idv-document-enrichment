@@ -1,6 +1,7 @@
 using Azure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph.Models.ODataErrors;
+using System.ClientModel;
 
 namespace IdvEnrichment.Functions.Shared;
 
@@ -24,6 +25,10 @@ public static class SdkExceptionHelper
         {
             throw Translate(ex, description, logger);
         }
+        catch (ClientResultException ex)
+        {
+            throw Translate(ex, description, logger);
+        }
     }
 
     public static async Task RunAsync(Func<Task> operation, string description, ILogger logger)
@@ -40,6 +45,10 @@ public static class SdkExceptionHelper
         {
             throw Translate(ex, description, logger);
         }
+        catch (ClientResultException ex)
+        {
+            throw Translate(ex, description, logger);
+        }
     }
 
     private static InvalidOperationException Translate(ODataError ex, string description, ILogger logger)
@@ -51,6 +60,12 @@ public static class SdkExceptionHelper
     }
 
     private static InvalidOperationException Translate(RequestFailedException ex, string description, ILogger logger)
+    {
+        logger.LogError(ex, "{Description} failed: HTTP {Status} - {Message}", description, ex.Status, ex.Message);
+        return new InvalidOperationException($"{description} failed: HTTP {ex.Status} - {ex.Message}", ex);
+    }
+
+    private static InvalidOperationException Translate(ClientResultException ex, string description, ILogger logger)
     {
         logger.LogError(ex, "{Description} failed: HTTP {Status} - {Message}", description, ex.Status, ex.Message);
         return new InvalidOperationException($"{description} failed: HTTP {ex.Status} - {ex.Message}", ex);

@@ -2,6 +2,7 @@ using Azure;
 using IdvEnrichment.Functions.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Graph.Models.ODataErrors;
+using System.ClientModel;
 using Xunit;
 
 namespace IdvEnrichment.Functions.Tests;
@@ -80,5 +81,37 @@ public class SdkExceptionHelperTests
         Assert.Contains("Batch report write", ex.Message);
         Assert.Contains("429", ex.Message);
         Assert.Contains("Throttled", ex.Message);
+    }
+
+    [Fact]
+    public async Task RunAsync_Generic_ClientResultException_TranslatesWithStatusAndMessage()
+    {
+        var clientResultException = FakeClientResultException.Create(429);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            SdkExceptionHelper.RunAsync<int>(
+                () => throw clientResultException,
+                "Classifying document",
+                Logger));
+
+        Assert.Contains("Classifying document", ex.Message);
+        Assert.Contains("429", ex.Message);
+        Assert.Same(clientResultException, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task RunAsync_NonGeneric_ClientResultException_TranslatesWithStatusAndMessage()
+    {
+        var clientResultException = FakeClientResultException.Create(500);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            SdkExceptionHelper.RunAsync(
+                () => throw clientResultException,
+                "Extracting drawing details",
+                Logger));
+
+        Assert.Contains("Extracting drawing details", ex.Message);
+        Assert.Contains("500", ex.Message);
+        Assert.Same(clientResultException, ex.InnerException);
     }
 }
