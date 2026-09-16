@@ -88,7 +88,7 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
                     var subPath = folderPath is null ? item.Name! : $"{folderPath}/{item.Name}";
                     subfolderPaths.Add(subPath);
                 }
-                else if (SupportedExtensions.Contains(Path.GetExtension(item.Name ?? "")))
+                else if (!IsOfficeLockFile(item.Name) && SupportedExtensions.Contains(Path.GetExtension(item.Name ?? "")))
                 {
                     documents.Add(new LibraryDocument(
                         Id: item.Id!,
@@ -109,4 +109,10 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
             await CollectDocumentsAsync(driveId, subfolder, documents, ct);
         }
     }
+
+    // Office creates a hidden lock file (e.g. "~$Report.xlsx") alongside any document open for editing.
+    // Its extension still matches SupportedExtensions, so without this check it gets enumerated as a real
+    // document and fails extraction -- the lock file is a zero-byte placeholder, not the actual content.
+    private static bool IsOfficeLockFile(string? name) =>
+        name is not null && name.StartsWith("~$", StringComparison.Ordinal);
 }
