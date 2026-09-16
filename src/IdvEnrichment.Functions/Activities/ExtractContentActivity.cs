@@ -121,7 +121,12 @@ public sealed class ExtractContentActivity(
             input.FileName, logger, ct);
 
         var contentLength = response.Content.Headers.ContentLength ?? -1;
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
+
+        // ClosedXML's OpenXML repair path (used on malformed .xlsx/.xlsm packages) requires a seekable
+        // stream, and HttpClient's own stream is forward-only. Buffer into memory before handing off.
+        using var stream = new MemoryStream();
+        await response.Content.CopyToAsync(stream, ct);
+        stream.Position = 0;
 
         string markdown;
         try
