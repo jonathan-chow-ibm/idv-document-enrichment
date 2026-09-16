@@ -165,7 +165,7 @@ public sealed class ExtractContentActivity(
     {
         // Stage-timing marker -- lets a stalled document be isolated to download/local-parse/DI by
         // scanning traces for this instance's FileName instead of guessing from chunk-level symptoms.
-        logger.LogInformation("Extracting PDF {FileName}", input.FileName);
+        logger.LogDebug("Extracting PDF {FileName}", input.FileName);
 
         var client = httpClientFactory.CreateClient("spreadsheet");
         using var response = await DownloadRetryHelper.GetWithRetryAsync(
@@ -232,7 +232,7 @@ public sealed class ExtractContentActivity(
             }
 
             var isBornDigital = PdfDigitalDetector.IsBornDigital(pages);
-            logger.LogInformation(
+            logger.LogDebug(
                 "{FileName}: parsed {PageCount} pages locally in {ElapsedMs}ms, bornDigital={BornDigital}",
                 input.FileName, pageLimit, sw.ElapsedMilliseconds, isBornDigital);
 
