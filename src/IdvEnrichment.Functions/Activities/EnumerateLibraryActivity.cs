@@ -126,6 +126,6 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient, ILo
     // Office creates a hidden lock file (e.g. "~$Report.xlsx") alongside any document open for editing.
     // Its extension still matches SupportedExtensions, so without this check it gets enumerated as a real
     // document and fails extraction -- the lock file is a zero-byte placeholder, not the actual content.
-    private static bool IsOfficeLockFile(string? name) =>
+    internal static bool IsOfficeLockFile(string? name) =>
         name is not null && name.StartsWith("~$", StringComparison.Ordinal);
 }
