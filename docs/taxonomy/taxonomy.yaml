@@ -89,6 +89,9 @@ document_types:
       - "CHECK LAST: use Design Drawing only when the Plat and Survey markers above are absent"
       - "Site plans, floor plans, permit sets, grading plans, elevations, details, general notes = Design Drawing"
       - "A drawing produced by an architect or engineer is a Design Drawing — unless it is a recorded Plat or a surveyor-sealed Survey, which take precedence"
+    # Classification (and vision correction) still run; Agent 2 metadata extraction is skipped as
+    # low-value cost for this type.
+    extraction_enabled: false
 
   # --- Reports (PDF) ---
   - label: "Closing Statement"
