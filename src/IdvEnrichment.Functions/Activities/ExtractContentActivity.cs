@@ -153,6 +153,10 @@ public sealed class ExtractContentActivity(
 
     private async Task<ExtractionResult> ExtractPdfAsync(ExtractContentInput input, CancellationToken ct)
     {
+        // Stage-timing marker -- lets a stalled document be isolated to download/local-parse/DI by
+        // scanning traces for this instance's FileName instead of guessing from chunk-level symptoms.
+        logger.LogInformation("Extracting PDF {FileName}", input.FileName);
+
         var client = httpClientFactory.CreateClient("spreadsheet");
         using var response = await DownloadRetryHelper.GetWithRetryAsync(
             token => client.GetAsync(input.DocumentUrl, HttpCompletionOption.ResponseHeadersRead, token),
@@ -217,7 +221,12 @@ public sealed class ExtractContentActivity(
                 pages.Add(new PageTextInfo(page.Text.Length, HasFullPageImage(page)));
             }
 
-            if (!PdfDigitalDetector.IsBornDigital(pages))
+            var isBornDigital = PdfDigitalDetector.IsBornDigital(pages);
+            logger.LogInformation(
+                "{FileName}: parsed {PageCount} pages locally in {ElapsedMs}ms, bornDigital={BornDigital}",
+                input.FileName, pageLimit, sw.ElapsedMilliseconds, isBornDigital);
+
+            if (!isBornDigital)
             {
                 return ExceedsDocumentIntelligencePageCap(document.NumberOfPages, input.MaxPages)
                     ? ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0))
@@ -321,6 +330,10 @@ public sealed class ExtractContentActivity(
         // scans than an LLM call.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(DocumentIntelligenceTimeout);
+
+        logger.LogInformation(
+            "Submitting {FileName} to Document Intelligence (pages={Pages})",
+            input.FileName, options.Pages ?? "all");
 
         var sw = Stopwatch.StartNew();
         Operation<AnalyzeResult> operation;
