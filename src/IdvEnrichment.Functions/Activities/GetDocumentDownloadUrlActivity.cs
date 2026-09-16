@@ -1,5 +1,6 @@
 using Azure.Core;
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
@@ -33,9 +34,10 @@ public sealed class GetDocumentDownloadUrlActivity(
             return new DocumentDownloadResult(input.FileUrl, IsConvertedToPdf: false);
         }
 
-        var driveItem = await graphClient.Drives[input.DriveId]
-            .Items[input.ItemId]
-            .GetAsync(cancellationToken: ct);
+        var driveItem = await SdkExceptionHelper.RunAsync(
+            () => graphClient.Drives[input.DriveId].Items[input.ItemId].GetAsync(cancellationToken: ct),
+            $"Looking up drive item {input.ItemId}",
+            logger);
 
         var downloadUrl = driveItem?.AdditionalData is { } data &&
             data.TryGetValue("@microsoft.graph.downloadUrl", out var urlObj)

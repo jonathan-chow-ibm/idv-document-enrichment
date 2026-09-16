@@ -61,7 +61,10 @@ public sealed class WriteMetadataActivity(
         // use the raw-URL constructor on FieldsRequestBuilder to target the correct endpoint.
         var fieldsUrl = $"{GraphBaseUrl}/drives/{input.DriveId}/items/{input.ItemId}/listItem/fields";
         var fieldsBuilder = new FieldsRequestBuilder(fieldsUrl, graphClient.RequestAdapter);
-        await fieldsBuilder.PatchAsync(fields, cancellationToken: ct);
+        await SdkExceptionHelper.RunAsync(
+            () => fieldsBuilder.PatchAsync(fields, cancellationToken: ct),
+            $"Writing metadata fields for item {input.ItemId} on drive {input.DriveId}",
+            logger);
     }
 
     // Internal for testability: pure mapping from an EnrichmentResult + taxonomy to the SharePoint fields PATCH body.

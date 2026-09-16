@@ -339,8 +339,10 @@ public sealed class ExtractContentActivity(
         Operation<AnalyzeResult> operation;
         try
         {
-            operation = await docIntelClient.AnalyzeDocumentAsync(
-                WaitUntil.Completed, options, timeoutCts.Token);
+            operation = await SdkExceptionHelper.RunAsync(
+                () => docIntelClient.AnalyzeDocumentAsync(WaitUntil.Completed, options, timeoutCts.Token),
+                $"Document Intelligence analysis for {input.FileName}",
+                logger);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

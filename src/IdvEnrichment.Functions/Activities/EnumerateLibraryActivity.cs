@@ -1,12 +1,14 @@
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Models.ODataErrors;
 
 namespace IdvEnrichment.Functions.Activities;
 
-public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
+public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient, ILogger<EnumerateLibraryActivity> logger)
 {
     private static readonly string[] SelectFields =
     [
@@ -61,16 +63,24 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
         List<LibraryDocument> documents,
         CancellationToken ct)
     {
+        var describedPath = folderPath ?? "root";
+
         DriveItemCollectionResponse? response;
         if (folderPath is null)
         {
-            response = await graphClient.Drives[driveId].Items["root"].Children
-                .GetAsync(cfg => cfg.QueryParameters.Select = SelectFields, ct);
+            response = await SdkExceptionHelper.RunAsync(
+                () => graphClient.Drives[driveId].Items["root"].Children
+                    .GetAsync(cfg => cfg.QueryParameters.Select = SelectFields, ct),
+                $"Enumerating '{describedPath}' in drive {driveId}",
+                logger);
         }
         else
         {
-            response = await graphClient.Drives[driveId].Items[$"root:/{folderPath}:"].Children
-                .GetAsync(cfg => cfg.QueryParameters.Select = SelectFields, ct);
+            response = await SdkExceptionHelper.RunAsync(
+                () => graphClient.Drives[driveId].Items[$"root:/{folderPath}:"].Children
+                    .GetAsync(cfg => cfg.QueryParameters.Select = SelectFields, ct),
+                $"Enumerating '{describedPath}' in drive {driveId}",
+                logger);
         }
 
         if (response is null)
@@ -102,7 +112,10 @@ public sealed class EnumerateLibraryActivity(GraphServiceClient graphClient)
                 return true;
             });
 
-        await pageIterator.IterateAsync(ct);
+        await SdkExceptionHelper.RunAsync(
+            () => pageIterator.IterateAsync(ct),
+            $"Paging '{describedPath}' in drive {driveId}",
+            logger);
 
         foreach (var subfolder in subfolderPaths)
         {

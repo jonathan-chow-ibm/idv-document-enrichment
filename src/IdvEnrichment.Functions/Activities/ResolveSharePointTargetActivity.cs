@@ -1,11 +1,13 @@
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 
 namespace IdvEnrichment.Functions.Activities;
 
-public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClient)
+public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClient, ILogger<ResolveSharePointTargetActivity> logger)
 {
     [Function(nameof(ResolveSharePointTarget))]
     public async Task<ResolvedSharePointTarget> ResolveSharePointTarget(
@@ -14,13 +16,19 @@ public sealed class ResolveSharePointTargetActivity(GraphServiceClient graphClie
     {
         var (hostname, sitePath, libraryName, folderPath) = ParseSharePointUrl(url);
 
-        var site = await graphClient.Sites[$"{hostname}:{sitePath}"].GetAsync(cancellationToken: ct)
+        var site = await SdkExceptionHelper.RunAsync(
+            () => graphClient.Sites[$"{hostname}:{sitePath}"].GetAsync(cancellationToken: ct),
+            $"Resolving SharePoint site {hostname}:{sitePath}",
+            logger)
             ?? throw new InvalidOperationException($"Could not find SharePoint site at {hostname}:{sitePath}");
 
         var siteId = site.Id!;
         var siteName = site.DisplayName ?? site.Name ?? hostname;
 
-        var drivesResponse = await graphClient.Sites[siteId].Drives.GetAsync(cancellationToken: ct);
+        var drivesResponse = await SdkExceptionHelper.RunAsync(
+            () => graphClient.Sites[siteId].Drives.GetAsync(cancellationToken: ct),
+            $"Listing drives for site {siteName}",
+            logger);
         var drives = drivesResponse?.Value ?? [];
 
         var drive = SelectDrive(drives, libraryName, siteName);
