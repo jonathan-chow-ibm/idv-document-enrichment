@@ -27,6 +27,16 @@ public sealed class HttpBatchTrigger(ILogger<HttpBatchTrigger> logger)
             return badResponse;
         }
 
+        if (batchRequest.MaxConcurrency is { } maxConcurrency && maxConcurrency <= 0)
+        {
+            // Zero silently degrades the chunk orchestrator's sliding window to a no-op that returns an
+            // empty, error-free result instead of processing anything -- reject it here rather than let
+            // a batch that never touched the client's SharePoint site look like it succeeded.
+            var badResponse = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+            await badResponse.WriteStringAsync("MaxConcurrency must be a positive integer.", ct);
+            return badResponse;
+        }
+
         var instanceId = await durableClient.ScheduleNewOrchestrationInstanceAsync(
             nameof(BatchOrchestrator.BatchProcessingOrchestrator),
             batchRequest,
