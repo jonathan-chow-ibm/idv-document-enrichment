@@ -75,6 +75,7 @@ public sealed record ExtractionResult(
 {
     private const string UnsupportedMethod = "unsupported";
     private const string TooLargeMethod = "too-large";
+    private const string PasswordProtectedMethod = "password-protected";
 
     // Sentinel for formats that cannot be parsed; routes the document to human review.
     public static ExtractionResult UnsupportedFormat(string fileName) =>
@@ -88,8 +89,16 @@ public sealed record ExtractionResult(
             PageCount: 0, TextLength: 0, KeyValuePairs: [], Language: "unknown",
             ExtractionMethod: TooLargeMethod);
 
+    // Sentinel for PDFs that cannot be opened without a password; routes to human review rather than
+    // falling back to Document Intelligence, which cannot open an encrypted PDF either.
+    public static ExtractionResult PasswordProtected(string fileName) =>
+        new(Text: $"[Password-protected file cannot be processed automatically: {Path.GetExtension(fileName)}]",
+            PageCount: 0, TextLength: 0, KeyValuePairs: [], Language: "unknown",
+            ExtractionMethod: PasswordProtectedMethod);
+
     public bool IsUnsupported => ExtractionMethod == UnsupportedMethod;
     public bool IsTooLarge => ExtractionMethod == TooLargeMethod;
+    public bool IsPasswordProtected => ExtractionMethod == PasswordProtectedMethod;
 }
 
 /// <summary>Combined output from the full two-agent pipeline.</summary>

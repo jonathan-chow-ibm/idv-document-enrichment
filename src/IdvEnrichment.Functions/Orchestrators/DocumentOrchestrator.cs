@@ -98,6 +98,31 @@ public sealed class DocumentOrchestrator
                 return tooLargeResult;
             }
 
+            if (extraction.IsPasswordProtected)
+            {
+                var passwordProtectedResult = new EnrichmentResult(
+                    DocumentId: message.DocumentId,
+                    FileName: message.FileName,
+                    Extraction: extraction,
+                    TypeClassification: new TypeClassificationResult(DocumentType.Other, 0.0, "Password-protected file cannot be processed automatically"),
+                    Metadata: null,
+                    ProcessingMetrics: new ProcessingMetrics(),
+                    RoutingDecision: RoutingDecision.Review,
+                    LowConfidenceCategories: ["password"]);
+
+                await ctx.CallActivityAsync(
+                    "WriteMetadata",
+                    new WriteMetadataInput(message.SiteId, message.DriveId, message.ItemId, passwordProtectedResult),
+                    retry);
+
+                await ctx.CallActivityAsync(
+                    "RecordProcessingResult",
+                    new RecordProcessingResultInput(message.DriveId, message.DocumentId, "review", message.BatchId),
+                    retry);
+
+                return passwordProtectedResult;
+            }
+
             var typeClassification = await ctx.CallActivityAsync<TypeClassificationResult>(
                 "ClassifyType",
                 new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
