@@ -23,8 +23,8 @@ public sealed class ExtractDrawingDetailsActivity(
         CancellationToken ct = default)
     {
         var client = httpClientFactory.CreateClient("spreadsheet");
-        using var response = await client.GetAsync(input.DocumentUrl, ct);
-        response.EnsureSuccessStatusCode();
+        using var response = await DownloadRetryHelper.GetWithRetryAsync(
+            token => client.GetAsync(input.DocumentUrl, token), input.FileName, logger, ct);
         var pdfBytes = await response.Content.ReadAsByteArrayAsync(ct);
 
         byte[] pngBytes;

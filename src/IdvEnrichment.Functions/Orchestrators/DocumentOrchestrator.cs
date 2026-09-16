@@ -123,10 +123,12 @@ public sealed class DocumentOrchestrator
                 return passwordProtectedResult;
             }
 
+            // No Durable-level retry: ClassifyType is pure OpenAI work already retried internally by
+            // OpenAiRetryHelper (429s with Retry-After backoff, up to 90s/attempt). Wrapping it in another
+            // 3-attempt Durable retry compounded worst-case latency to ~20 minutes for no added protection.
             var typeClassification = await ctx.CallActivityAsync<TypeClassificationResult>(
                 "ClassifyType",
-                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs),
-                retry);
+                new ClassifyTypeInput(message.DocumentId, message.FileName, extraction.Text, extraction.KeyValuePairs));
 
             var typeThreshold = await ctx.CallActivityAsync<double>(
                 "GetTypeConfidenceThreshold", typeClassification.DocumentType, retry);
@@ -147,10 +149,12 @@ public sealed class DocumentOrchestrator
             {
                 try
                 {
+                    // No Durable-level retry, for the same reason as ClassifyType above: the HTTP download
+                    // now goes through DownloadRetryHelper and the OpenAI call through OpenAiRetryHelper, so
+                    // a third, compounding retry layer here only added latency without added protection.
                     drawingClassification = await ctx.CallActivityAsync<DrawingClassification>(
                         "ExtractDrawingDetails",
-                        new ExtractDrawingDetailsInput(downloadUrl, message.FileName, extraction.Text),
-                        retry);
+                        new ExtractDrawingDetailsInput(downloadUrl, message.FileName, extraction.Text));
 
                     // Vision sees the title block, seals and dedication blocks directly, so it is
                     // better placed than Agent 1 (scrambled OCR) to tell Plat / Survey / Design Drawing
