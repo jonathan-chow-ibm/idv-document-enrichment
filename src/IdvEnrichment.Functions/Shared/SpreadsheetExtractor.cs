@@ -125,14 +125,14 @@ public static class SpreadsheetExtractor
         }
 
         // Header row
-        var headerCells = rows[0].Cells().Select(c => EscapeCell(c.GetFormattedString())).ToList();
+        var headerCells = rows[0].Cells().Select(c => EscapeCell(SafeFormattedString(c))).ToList();
         sb.AppendLine("| " + string.Join(" | ", headerCells) + " |");
         sb.AppendLine("| " + string.Join(" | ", headerCells.Select(_ => "---")) + " |");
 
         // Data rows
         foreach (var row in rows.Skip(1))
         {
-            var cells = row.Cells(1, range.ColumnCount()).Select(c => EscapeCell(c.GetFormattedString()));
+            var cells = row.Cells(1, range.ColumnCount()).Select(c => EscapeCell(SafeFormattedString(c)));
             sb.AppendLine("| " + string.Join(" | ", cells) + " |");
         }
 
@@ -142,4 +142,19 @@ public static class SpreadsheetExtractor
 
     private static string EscapeCell(string value) =>
         value.Replace("|", "\\|").Replace("\n", " ").Replace("\r", "");
+
+    // Some .xlsm cells carry a date format applied to a numeric serial outside the representable
+    // DateTime range (corrupt or misapplied formatting, not an actual date) -- GetFormattedString()
+    // throws trying to convert that serial to a DateTime instead of just rendering the number.
+    private static string SafeFormattedString(IXLCell cell)
+    {
+        try
+        {
+            return cell.GetFormattedString();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return "[unreadable value]";
+        }
+    }
 }
