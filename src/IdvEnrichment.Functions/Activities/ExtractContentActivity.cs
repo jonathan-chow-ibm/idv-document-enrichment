@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Text;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Exceptions;
 using PipelineDocumentField = IdvEnrichment.Functions.Models.DocumentField;
 
 namespace IdvEnrichment.Functions.Activities;
@@ -175,6 +176,19 @@ public sealed class ExtractContentActivity(
 
         using var stream = await response.Content.ReadAsStreamAsync(ct);
 
+        // TryExtractLocally's own try/catch covers only the PdfPig-specific work (opening the file,
+        // walking pages). The DI fallback call below sits outside it deliberately -- DI surfaces its own
+        // failures as RequestFailedException/TimeoutException, and a catch-all wrapping this call too
+        // would mistake a DI failure for a local-parsing failure and retry DI a second time.
+        var localResult = TryExtractLocally(stream, input, contentLength);
+        return localResult ?? await ExtractWithDocumentIntelligenceAsync(input, ct);
+    }
+
+    // Returns a terminal ExtractionResult when the outcome is decided locally (a successful pdfpig
+    // extraction, or a review sentinel such as TooLarge/PasswordProtected), or null when the document
+    // should fall back to Document Intelligence.
+    private ExtractionResult? TryExtractLocally(Stream stream, ExtractContentInput input, long contentLength)
+    {
         var sw = Stopwatch.StartNew();
         try
         {
@@ -207,7 +221,7 @@ public sealed class ExtractContentActivity(
             {
                 return ExceedsDocumentIntelligencePageCap(document.NumberOfPages, input.MaxPages)
                     ? ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0))
-                    : await ExtractWithDocumentIntelligenceAsync(input, ct);
+                    : null; // scanned — fall back to DI
             }
 
             sw.Stop();
@@ -221,11 +235,17 @@ public sealed class ExtractContentActivity(
                 ExtractionMethod: "pdfpig",
                 DurationMs: (int)sw.Elapsed.TotalMilliseconds);
         }
+        catch (PdfDocumentEncryptedException ex)
+        {
+            // DI cannot open an encrypted PDF either -- route straight to review instead of falling back.
+            logger.LogWarning(ex, "{FileName} is password-protected; routing to review.", input.FileName);
+            return ExtractionResult.PasswordProtected(input.FileName);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Couldn't determine locally (corrupt/malformed PDF) — let DI attempt it instead of failing outright.
             logger.LogWarning(ex, "Failed to parse {FileName} locally with PdfPig; falling back to Document Intelligence.", input.FileName);
-            return await ExtractWithDocumentIntelligenceAsync(input, ct);
+            return null;
         }
     }
 
