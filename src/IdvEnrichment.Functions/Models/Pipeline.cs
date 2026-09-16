@@ -176,7 +176,10 @@ public sealed record RouteResultInput(
     [property: JsonPropertyName("typeClassification")] TypeClassificationResult TypeClassification,
     [property: JsonPropertyName("metadata")] MetadataExtractionResult? Metadata,
     [property: JsonPropertyName("extraction")] ExtractionResult Extraction,
-    [property: JsonPropertyName("drawingClassification")] DrawingClassification? DrawingClassification = null);
+    [property: JsonPropertyName("drawingClassification")] DrawingClassification? DrawingClassification = null,
+    // True when metadata is null because the taxonomy disabled extraction for this type — not because
+    // of low confidence or an unresolved type. RouteResultActivity routes this to Write, not Review.
+    [property: JsonPropertyName("extractionExcludedByType")] bool ExtractionExcludedByType = false);
 
 public sealed record FilterProcessedInput(
     [property: JsonPropertyName("documents")] IReadOnlyList<LibraryDocument> Documents,
