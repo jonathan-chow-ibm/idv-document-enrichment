@@ -199,6 +199,19 @@ public sealed class DocumentOrchestrator
                 }
             }
 
+            // Uses the (possibly vision-corrected) type resolved above, so a vision override into or
+            // out of an extraction-excluded type is respected here.
+            var extractionEnabledForType = await ctx.CallActivityAsync<bool>(
+                "GetTypeExtractionPolicy", typeClassification.DocumentType, retry);
+
+            var extractionExcludedByType = IsExcludedByTypeConfig(
+                skipExtraction, message.ClassifyOnly, extractionEnabledForType);
+
+            if (extractionExcludedByType)
+            {
+                skipExtraction = true;
+            }
+
             MetadataExtractionResult? metadata = null;
             if (!skipExtraction && !message.ClassifyOnly)
             {
@@ -214,7 +227,7 @@ public sealed class DocumentOrchestrator
 
             var enrichmentResult = await ctx.CallActivityAsync<EnrichmentResult>(
                 "RouteResult",
-                new RouteResultInput(message, typeClassification, metadata, extraction, drawingClassification),
+                new RouteResultInput(message, typeClassification, metadata, extraction, drawingClassification, extractionExcludedByType),
                 retry);
 
             try
@@ -282,4 +295,10 @@ public sealed class DocumentOrchestrator
     // an explicit MaxPages: 0 slip past the classify-only default and trigger a full-document extraction.
     internal static int? ResolveMaxPages(int? requestedMaxPages, bool classifyOnly) =>
         ExtractContentActivity.HasPageLimit(requestedMaxPages) ? requestedMaxPages : (classifyOnly ? 1 : null);
+
+    // The type-config exclusion is deliberately the weakest signal: it never overrides an existing skip
+    // reason (low confidence, DocumentType.Other), and it never fires for a classify-only run — those
+    // must stay non-terminal (see the "status" comment below) regardless of the type's extraction policy.
+    internal static bool IsExcludedByTypeConfig(bool skipExtraction, bool classifyOnly, bool extractionEnabledForType) =>
+        !skipExtraction && !classifyOnly && !extractionEnabledForType;
 }
