@@ -1,10 +1,12 @@
 using Azure.Data.Tables;
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 
 namespace IdvEnrichment.Functions.Activities;
 
-public sealed class FilterProcessedActivity(TableServiceClient tableServiceClient)
+public sealed class FilterProcessedActivity(TableServiceClient tableServiceClient, ILogger<FilterProcessedActivity> logger)
 {
     private const string TableName = "ProcessingTracking";
 
@@ -20,21 +22,25 @@ public sealed class FilterProcessedActivity(TableServiceClient tableServiceClien
         CancellationToken ct = default)
     {
         var tableClient = tableServiceClient.GetTableClient(TableName);
-        await tableClient.CreateIfNotExistsAsync(ct);
 
         var documentIds = input.Documents.Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
         var processedIds = new HashSet<string>(StringComparer.Ordinal);
 
-        // Partitioned by library (drive), not by batch run, so this survives across restarts,
-        // stalls, and cost-driven stops against the same library instead of starting from zero.
-        var filter = TableClient.CreateQueryFilter($"PartitionKey eq {input.LibraryKey}");
-        await foreach (var entity in tableClient.QueryAsync<TableEntity>(filter: filter, cancellationToken: ct))
+        await SdkExceptionHelper.RunAsync(async () =>
         {
-            if (documentIds.Contains(entity.RowKey) && ShouldSkip(entity.GetString("Status")))
+            await tableClient.CreateIfNotExistsAsync(ct);
+
+            // Partitioned by library (drive), not by batch run, so this survives across restarts,
+            // stalls, and cost-driven stops against the same library instead of starting from zero.
+            var filter = TableClient.CreateQueryFilter($"PartitionKey eq {input.LibraryKey}");
+            await foreach (var entity in tableClient.QueryAsync<TableEntity>(filter: filter, cancellationToken: ct))
             {
-                processedIds.Add(entity.RowKey);
+                if (documentIds.Contains(entity.RowKey) && ShouldSkip(entity.GetString("Status")))
+                {
+                    processedIds.Add(entity.RowKey);
+                }
             }
-        }
+        }, $"Processed-document lookup for library {input.LibraryKey}", logger);
 
         return input.Documents
             .Where(d => !processedIds.Contains(d.Id))

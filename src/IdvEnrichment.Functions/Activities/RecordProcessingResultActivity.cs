@@ -1,10 +1,12 @@
 using Azure.Data.Tables;
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
 
 namespace IdvEnrichment.Functions.Activities;
 
-public sealed class RecordProcessingResultActivity(TableServiceClient tableServiceClient)
+public sealed class RecordProcessingResultActivity(TableServiceClient tableServiceClient, ILogger<RecordProcessingResultActivity> logger)
 {
     private const string TableName = "ProcessingTracking";
 
@@ -14,7 +16,6 @@ public sealed class RecordProcessingResultActivity(TableServiceClient tableServi
         CancellationToken ct = default)
     {
         var tableClient = tableServiceClient.GetTableClient(TableName);
-        await tableClient.CreateIfNotExistsAsync(ct);
 
         var entity = new TableEntity(input.LibraryKey, input.DocumentId)
         {
@@ -23,6 +24,10 @@ public sealed class RecordProcessingResultActivity(TableServiceClient tableServi
             ["ProcessedAt"] = DateTimeOffset.UtcNow,
         };
 
-        await tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace, ct);
+        await SdkExceptionHelper.RunAsync(async () =>
+        {
+            await tableClient.CreateIfNotExistsAsync(ct);
+            await tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace, ct);
+        }, $"Processing-result write for document {input.DocumentId}", logger);
     }
 }

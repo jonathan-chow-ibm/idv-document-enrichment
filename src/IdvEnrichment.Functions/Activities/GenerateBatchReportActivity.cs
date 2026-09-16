@@ -86,18 +86,21 @@ public sealed class GenerateBatchReportActivity(
 
     private async Task WriteReportsAsync(BatchReport report, GenerateBatchReportInput input, CancellationToken ct)
     {
-        await reportContainer!.CreateIfNotExistsAsync(cancellationToken: ct);
-
         var prefix = $"{report.StartedAt:yyyy-MM-dd}/{report.BatchId}";
 
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(report, new JsonSerializerOptions { WriteIndented = true });
-        var jsonBlob = reportContainer.GetBlobClient($"{prefix}/report.json");
-        await jsonBlob.UploadAsync(new BinaryData(jsonBytes), new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "application/json" } }, ct);
+        await SdkExceptionHelper.RunAsync(async () =>
+        {
+            await reportContainer!.CreateIfNotExistsAsync(cancellationToken: ct);
 
-        var html = BuildHtmlReport(report, input);
-        var htmlBytes = Encoding.UTF8.GetBytes(html);
-        var htmlBlob = reportContainer.GetBlobClient($"{prefix}/report.html");
-        await htmlBlob.UploadAsync(new BinaryData(htmlBytes), new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "text/html; charset=utf-8" } }, ct);
+            var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(report, new JsonSerializerOptions { WriteIndented = true });
+            var jsonBlob = reportContainer.GetBlobClient($"{prefix}/report.json");
+            await jsonBlob.UploadAsync(new BinaryData(jsonBytes), new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "application/json" } }, ct);
+
+            var html = BuildHtmlReport(report, input);
+            var htmlBytes = Encoding.UTF8.GetBytes(html);
+            var htmlBlob = reportContainer.GetBlobClient($"{prefix}/report.html");
+            await htmlBlob.UploadAsync(new BinaryData(htmlBytes), new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = "text/html; charset=utf-8" } }, ct);
+        }, $"Batch report write for {report.BatchId}", logger);
 
         logger.LogInformation("Batch report written to {Prefix}", prefix);
     }
