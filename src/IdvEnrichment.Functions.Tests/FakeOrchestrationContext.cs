@@ -11,7 +11,10 @@ namespace IdvEnrichment.Functions.Tests;
 /// </summary>
 internal sealed class FakeOrchestrationContext(object? input = null) : TaskOrchestrationContext
 {
-    private readonly TaskCompletionSource timer = new();
+    // Each CreateTimer call gets its own completion source, so FireTimers() only resolves the timers
+    // created so far -- a test can start the orchestrator, let it dispatch work, and fire timers at a
+    // precise point without pre-resolving a timer that a later document hasn't created yet.
+    private readonly List<TaskCompletionSource> timers = [];
 
     public override string InstanceId => "fake-instance";
 
@@ -32,19 +35,37 @@ internal sealed class FakeOrchestrationContext(object? input = null) : TaskOrche
     /// <summary>Deadlines passed to <see cref="CreateTimer"/>, in call order.</summary>
     public List<DateTime> TimerDeadlines { get; } = [];
 
+    /// <summary>
+    /// Inputs passed to <see cref="CallSubOrchestratorAsync{TResult}"/>, recorded in dispatch order --
+    /// the moment the call is made, not when it resolves. Lets a test assert "document X was started
+    /// before document Y finished/timed out" instead of only being able to observe final outcomes.
+    /// </summary>
+    public List<object?> DispatchedInputs { get; } = [];
+
     public bool TimerCancelled { get; private set; }
 
-    /// <summary>Completes every timer created by the orchestrator, simulating expiry.</summary>
-    public void FireTimers() => timer.TrySetResult();
+    /// <summary>Completes every timer created so far, simulating expiry. Timers created afterward are unaffected.</summary>
+    public void FireTimers()
+    {
+        foreach (var timer in timers)
+        {
+            timer.TrySetResult();
+        }
+    }
 
     public override T? GetInput<T>() where T : default => (T?)input;
 
     public override async Task<TResult> CallSubOrchestratorAsync<TResult>(
-        TaskName orchestratorName, object? input = null, TaskOptions? options = null) =>
-        (TResult)(await SubOrchestratorHandler(orchestratorName, input))!;
+        TaskName orchestratorName, object? input = null, TaskOptions? options = null)
+    {
+        DispatchedInputs.Add(input);
+        return (TResult)(await SubOrchestratorHandler(orchestratorName, input))!;
+    }
 
     public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken)
     {
+        var timer = new TaskCompletionSource();
+        timers.Add(timer);
         TimerDeadlines.Add(fireAt);
         cancellationToken.Register(() => TimerCancelled = true);
         return timer.Task;

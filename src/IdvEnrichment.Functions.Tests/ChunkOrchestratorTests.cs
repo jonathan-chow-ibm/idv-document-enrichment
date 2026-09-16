@@ -96,9 +96,14 @@ public class ChunkOrchestratorTests
             // A wedged sub-orchestration: without the timer guard the chunk would await this forever.
             SubOrchestratorHandler = (_, _) => new TaskCompletionSource<object?>().Task,
         };
+
+        // The timer is created only once the orchestrator actually reaches CreateTimer, so it must be
+        // started (not awaited) first -- firing before that would fire on an empty timer list and leave
+        // the real timer, created afterward, waiting forever.
+        var run = new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
         ctx.FireTimers();
 
-        var result = await new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+        var result = await run;
 
         Assert.Equal(1, result.Errors);
         Assert.Equal("doc-1", Assert.Single(result.FailedDocuments).DocumentId);
@@ -138,11 +143,14 @@ public class ChunkOrchestratorTests
     }
 
     [Fact]
-    public async Task ChunkProcessingOrchestrator_OneDocumentWedged_OthersFinishWithoutWaitingOnIt()
+    public async Task ChunkProcessingOrchestrator_OneDocumentWedged_NextDocumentStartsBeforeItTimesOut()
     {
-        // With MaxConcurrency=2 and doc-2 wedged, the sliding window must still let doc-1 and doc-3
-        // both complete (doc-3 starts as soon as doc-1's slot frees up) instead of the whole chunk
-        // blocking on doc-2 the way a fixed-size Task.WhenAll group would.
+        // Discriminates the sliding window from a fixed-size Task.WhenAll group: under a group barrier,
+        // doc-3 can't start until doc-2's group resolves (either by completing or timing out). Under the
+        // sliding window, doc-3 starts the moment doc-1's slot frees up -- before doc-2 ever times out.
+        // Pre-firing timers (as an earlier version of this test did) erases that distinction, since it
+        // lets doc-2's group resolve immediately either way. Here, timers are only fired after asserting
+        // on the state the two implementations would actually leave behind differently.
         var docs = new[]
         {
             new LibraryDocument("doc-1", "a.pdf", "application/pdf", DateTimeOffset.UnixEpoch),
@@ -157,9 +165,7 @@ public class ChunkOrchestratorTests
 
         var ctx = new FakeOrchestrationContext(request)
         {
-            // doc-2 is wedged; doc-1 and doc-3 resolve immediately. Task.WhenAny checks an
-            // already-completed documentTask before the (also-fired) timeoutTask, so only doc-2's
-            // never-completing documentTask actually times out.
+            // doc-2 is wedged; doc-1 and doc-3 resolve immediately.
             SubOrchestratorHandler = (_, input) =>
             {
                 var message = (QueueMessage)input!;
@@ -168,9 +174,18 @@ public class ChunkOrchestratorTests
                     : Task.FromResult<object?>(BuildEnrichmentResult() with { DocumentId = message.DocumentId });
             },
         };
-        ctx.FireTimers();
 
-        var result = await new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+        var run = new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+
+        // doc-1 and doc-3 resolve synchronously (Task.FromResult), so the orchestrator runs without a
+        // real await until it's left waiting on doc-2 alone -- by which point doc-3 must already have
+        // been dispatched under a sliding window. A fixed-size group would still be waiting on doc-2's
+        // group (=[doc-1, doc-2]) here and would never have dispatched doc-3 at all.
+        Assert.Contains(ctx.DispatchedInputs, i => ((QueueMessage)i!).DocumentId == "doc-3");
+        Assert.False(run.IsCompleted);
+
+        ctx.FireTimers();
+        var result = await run;
 
         Assert.Equal(1, result.Errors);
         Assert.Equal("doc-2", Assert.Single(result.FailedDocuments).DocumentId);
