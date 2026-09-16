@@ -60,4 +60,44 @@ public class DocumentOrchestratorTests
 
         Assert.Null(resolved);
     }
+
+    [Fact]
+    public void IsExcludedByTypeConfig_TypeDisabled_ReturnsTrue()
+    {
+        var excluded = DocumentOrchestrator.IsExcludedByTypeConfig(
+            skipExtraction: false, classifyOnly: false, extractionEnabledForType: false);
+
+        Assert.True(excluded);
+    }
+
+    [Fact]
+    public void IsExcludedByTypeConfig_TypeEnabled_ReturnsFalse()
+    {
+        var excluded = DocumentOrchestrator.IsExcludedByTypeConfig(
+            skipExtraction: false, classifyOnly: false, extractionEnabledForType: true);
+
+        Assert.False(excluded);
+    }
+
+    [Fact]
+    public void IsExcludedByTypeConfig_AlreadySkippingForAnotherReason_NeverTakesPrecedence()
+    {
+        // The type-config exclusion is the weakest signal -- it must not overwrite a skip that already
+        // happened for low confidence or DocumentType.Other; those keep their own (Review) routing.
+        var excluded = DocumentOrchestrator.IsExcludedByTypeConfig(
+            skipExtraction: true, classifyOnly: false, extractionEnabledForType: false);
+
+        Assert.False(excluded);
+    }
+
+    [Fact]
+    public void IsExcludedByTypeConfig_ClassifyOnlyRun_NeverFires()
+    {
+        // Classify-only runs must stay non-terminal regardless of the resolved type's extraction policy --
+        // RecordProcessingResult always writes "classified-only" for these, never "success" or "review".
+        var excluded = DocumentOrchestrator.IsExcludedByTypeConfig(
+            skipExtraction: false, classifyOnly: true, extractionEnabledForType: false);
+
+        Assert.False(excluded);
+    }
 }
