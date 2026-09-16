@@ -31,18 +31,21 @@ public sealed class ClassifyTypeActivity(
 
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiMiniDeployment);
         var sw = Stopwatch.StartNew();
-        var completion = await OpenAiRetryHelper.ExecuteWithRetryAsync(
-            callCt => chatClient.CompleteChatAsync(
-                [
-                    new SystemChatMessage(systemPrompt),
-                    new UserChatMessage(userPrompt),
-                ],
-                new ChatCompletionOptions
-                {
-                    ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
-                },
-                callCt),
-            logger, ct);
+        var completion = await SdkExceptionHelper.RunAsync(
+            () => OpenAiRetryHelper.ExecuteWithRetryAsync(
+                callCt => chatClient.CompleteChatAsync(
+                    [
+                        new SystemChatMessage(systemPrompt),
+                        new UserChatMessage(userPrompt),
+                    ],
+                    new ChatCompletionOptions
+                    {
+                        ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+                    },
+                    callCt),
+                logger, ct),
+            $"Type classification for document {input.DocumentId}",
+            logger);
 
         if (completion.Value.Content.Count == 0)
         {

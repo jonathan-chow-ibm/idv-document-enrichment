@@ -59,15 +59,18 @@ public sealed class ExtractDrawingDetailsActivity(
 
         var chatClient = openAiClient.GetChatClient(settings.Value.OpenAiMiniDeployment);
         var sw = Stopwatch.StartNew();
-        var completion = await OpenAiRetryHelper.ExecuteWithRetryAsync(
-            callCt => chatClient.CompleteChatAsync(
-                messages,
-                new ChatCompletionOptions
-                {
-                    ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
-                },
-                callCt),
-            logger, ct);
+        var completion = await SdkExceptionHelper.RunAsync(
+            () => OpenAiRetryHelper.ExecuteWithRetryAsync(
+                callCt => chatClient.CompleteChatAsync(
+                    messages,
+                    new ChatCompletionOptions
+                    {
+                        ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+                    },
+                    callCt),
+                logger, ct),
+            $"Drawing classification for {input.FileName}",
+            logger);
 
         if (completion.Value.Content.Count == 0)
         {
