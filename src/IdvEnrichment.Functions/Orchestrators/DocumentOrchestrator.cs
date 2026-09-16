@@ -200,16 +200,23 @@ public sealed class DocumentOrchestrator
             }
 
             // Uses the (possibly vision-corrected) type resolved above, so a vision override into or
-            // out of an extraction-excluded type is respected here.
-            var extractionEnabledForType = await ctx.CallActivityAsync<bool>(
-                "GetTypeExtractionPolicy", typeClassification.DocumentType, retry);
-
-            var extractionExcludedByType = IsExcludedByTypeConfig(
-                skipExtraction, message.ClassifyOnly, extractionEnabledForType);
-
-            if (extractionExcludedByType)
+            // out of an extraction-excluded type is respected here. Only called when nothing has
+            // decided a skip yet -- IsExcludedByTypeConfig discards the result otherwise, so calling
+            // it for documents already skipping (low confidence, Other, classify-only) would just be
+            // an extra history event with no effect on the outcome.
+            var extractionExcludedByType = false;
+            if (!skipExtraction && !message.ClassifyOnly)
             {
-                skipExtraction = true;
+                var extractionEnabledForType = await ctx.CallActivityAsync<bool>(
+                    "GetTypeExtractionPolicy", typeClassification.DocumentType, retry);
+
+                extractionExcludedByType = IsExcludedByTypeConfig(
+                    skipExtraction, message.ClassifyOnly, extractionEnabledForType);
+
+                if (extractionExcludedByType)
+                {
+                    skipExtraction = true;
+                }
             }
 
             MetadataExtractionResult? metadata = null;
