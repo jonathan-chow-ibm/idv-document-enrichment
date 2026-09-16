@@ -8,10 +8,11 @@ namespace IdvEnrichment.Functions.Orchestrators;
 
 public sealed class ChunkOrchestrator
 {
-    // Task.WhenAll below waits on every document in a group, so a single wedged sub-orchestration
-    // holds the whole chunk — and therefore the batch — open indefinitely. Generous enough that a
-    // slow-but-healthy document still finishes: the longest activity is bounded by the host's
-    // 10-minute functionTimeout, and a document runs several of them in sequence.
+    // Bounds a single document's sub-orchestration. Generous enough that a slow-but-healthy document
+    // still finishes: the longest activity is bounded by the host's 10-minute functionTimeout, and a
+    // document runs several of them in sequence. Safe to keep generous now that the sliding window
+    // below means an expiring document only ever occupies its own concurrency slot, rather than
+    // blocking a whole fixed-size group (and the rest of the batch behind it) for the full duration.
     private static readonly TimeSpan DocumentTimeout = TimeSpan.FromMinutes(20);
 
     [Function(nameof(ChunkProcessingOrchestrator))]
@@ -27,36 +28,59 @@ public sealed class ChunkOrchestrator
         var lowConfidenceClassifications = new List<LowConfidenceClassificationEntry>();
         var errors = 0;
 
-        // Process documents in parallel groups bounded by maxConcurrency
-        for (var i = 0; i < input.Documents.Count; i += input.MaxConcurrency)
+        // Sliding window bounded by maxConcurrency: a new document starts the moment any in-flight
+        // slot frees up, instead of waiting for a whole fixed-size group to finish first. Documents
+        // are started in order and Task.WhenAny is re-evaluated over a deterministic, monotonically
+        // advancing set of ctx-issued tasks, so replay still reproduces the same sequence of "which
+        // one finished next" from history.
+        var nextIndex = 0;
+        var inFlight = new List<Task<DocumentOutcome>>(Math.Min(input.MaxConcurrency, input.Documents.Count));
+
+        void StartNext()
         {
-            var group = input.Documents.Skip(i).Take(input.MaxConcurrency).ToList();
-
-            var tasks = group.Select(doc => ProcessDocSafeAsync(ctx, doc, input, log));
-            var groupResults = await Task.WhenAll(tasks);
-
-            foreach (var (result, succeeded, failedDocument, lowConfidenceEntry) in groupResults)
+            if (nextIndex < input.Documents.Count)
             {
-                if (succeeded)
+                inFlight.Add(ProcessDocSafeAsync(ctx, input.Documents[nextIndex++], input, log));
+            }
+        }
+
+        while (inFlight.Count < input.MaxConcurrency && nextIndex < input.Documents.Count)
+        {
+            StartNext();
+        }
+
+        while (inFlight.Count > 0)
+        {
+            var completed = await Task.WhenAny(inFlight);
+            inFlight.Remove(completed);
+            StartNext();
+
+            var outcome = await completed;
+            if (outcome.Succeeded)
+            {
+                results.Add(outcome.Result!);
+                if (outcome.LowConfidenceEntry is not null)
                 {
-                    results.Add(result!);
-                    if (lowConfidenceEntry is not null)
-                    {
-                        lowConfidenceClassifications.Add(lowConfidenceEntry);
-                    }
+                    lowConfidenceClassifications.Add(outcome.LowConfidenceEntry);
                 }
-                else
-                {
-                    errors++;
-                    failedDocuments.Add(failedDocument!);
-                }
+            }
+            else
+            {
+                errors++;
+                failedDocuments.Add(outcome.FailedDocument!);
             }
         }
 
         return new ChunkResult(results, errors, failedDocuments, lowConfidenceClassifications);
     }
 
-    private static async Task<(BatchDocumentEntry? Result, bool Succeeded, FailedDocumentEntry? FailedDocument, LowConfidenceClassificationEntry? LowConfidenceEntry)> ProcessDocSafeAsync(
+    private sealed record DocumentOutcome(
+        BatchDocumentEntry? Result,
+        bool Succeeded,
+        FailedDocumentEntry? FailedDocument,
+        LowConfidenceClassificationEntry? LowConfidenceEntry);
+
+    private static async Task<DocumentOutcome> ProcessDocSafeAsync(
         TaskOrchestrationContext ctx, LibraryDocument doc, ChunkRequest input, ILogger log)
     {
         try
@@ -89,26 +113,27 @@ public sealed class ChunkOrchestrator
                 log.LogWarning(
                     "Document {DocId} exceeded {TimeoutMinutes} minutes; abandoning it",
                     doc.Id, DocumentTimeout.TotalMinutes);
-                return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
+                return new DocumentOutcome(null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
             }
 
             // Unexpired timers keep the orchestration in Running until they fire.
             timerCts.Cancel();
             var result = await documentTask;
 
-            return (new BatchDocumentEntry(
-                result.TypeClassification.DocumentType,
-                result.RoutingDecision,
-                result.TypeClassification.Confidence,
-                result.WriteBackSucceeded,
-                result.ProcessingMetrics.ClassificationInputTokens,
-                result.ProcessingMetrics.ClassificationOutputTokens,
-                result.ProcessingMetrics.ExtractionInputTokens,
-                result.ProcessingMetrics.ExtractionOutputTokens,
-                result.ProcessingMetrics.VisionInputTokens,
-                result.ProcessingMetrics.VisionOutputTokens,
-                result.Metadata?.SuggestedFields.ToList() ?? [],
-                doc.Size),
+            return new DocumentOutcome(
+                new BatchDocumentEntry(
+                    result.TypeClassification.DocumentType,
+                    result.RoutingDecision,
+                    result.TypeClassification.Confidence,
+                    result.WriteBackSucceeded,
+                    result.ProcessingMetrics.ClassificationInputTokens,
+                    result.ProcessingMetrics.ClassificationOutputTokens,
+                    result.ProcessingMetrics.ExtractionInputTokens,
+                    result.ProcessingMetrics.ExtractionOutputTokens,
+                    result.ProcessingMetrics.VisionInputTokens,
+                    result.ProcessingMetrics.VisionOutputTokens,
+                    result.Metadata?.SuggestedFields.ToList() ?? [],
+                    doc.Size),
                 true, null,
                 BuildLowConfidenceEntry(doc.Id, doc.RelativePath, result.TypeClassification));
         }
@@ -119,12 +144,12 @@ public sealed class ChunkOrchestrator
         catch (TaskFailedException ex)
         {
             log.LogWarning(ex, "Document {DocId} failed after retries", doc.Id);
-            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
+            return new DocumentOutcome(null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "Unexpected error processing document {DocId}", doc.Id);
-            return (null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
+            return new DocumentOutcome(null, false, new FailedDocumentEntry(doc.Id, doc.RelativePath), null);
         }
     }
 

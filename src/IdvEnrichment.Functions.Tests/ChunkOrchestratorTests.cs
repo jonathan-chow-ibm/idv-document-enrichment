@@ -136,4 +136,44 @@ public class ChunkOrchestratorTests
         // Deterministic replay depends on the deadline coming off CurrentUtcDateTime, not DateTime.UtcNow.
         Assert.Equal(ctx.CurrentUtcDateTime.AddMinutes(20), Assert.Single(ctx.TimerDeadlines));
     }
+
+    [Fact]
+    public async Task ChunkProcessingOrchestrator_OneDocumentWedged_OthersFinishWithoutWaitingOnIt()
+    {
+        // With MaxConcurrency=2 and doc-2 wedged, the sliding window must still let doc-1 and doc-3
+        // both complete (doc-3 starts as soon as doc-1's slot frees up) instead of the whole chunk
+        // blocking on doc-2 the way a fixed-size Task.WhenAll group would.
+        var docs = new[]
+        {
+            new LibraryDocument("doc-1", "a.pdf", "application/pdf", DateTimeOffset.UnixEpoch),
+            new LibraryDocument("doc-2", "b.pdf", "application/pdf", DateTimeOffset.UnixEpoch),
+            new LibraryDocument("doc-3", "c.pdf", "application/pdf", DateTimeOffset.UnixEpoch),
+        };
+        var request = new ChunkRequest(
+            Documents: docs,
+            BatchId: "batch-1",
+            Target: new ResolvedSharePointTarget("site", "drive", null, "Site", "Library"),
+            MaxConcurrency: 2);
+
+        var ctx = new FakeOrchestrationContext(request)
+        {
+            // doc-2 is wedged; doc-1 and doc-3 resolve immediately. Task.WhenAny checks an
+            // already-completed documentTask before the (also-fired) timeoutTask, so only doc-2's
+            // never-completing documentTask actually times out.
+            SubOrchestratorHandler = (_, input) =>
+            {
+                var message = (QueueMessage)input!;
+                return message.DocumentId == "doc-2"
+                    ? new TaskCompletionSource<object?>().Task
+                    : Task.FromResult<object?>(BuildEnrichmentResult() with { DocumentId = message.DocumentId });
+            },
+        };
+        ctx.FireTimers();
+
+        var result = await new ChunkOrchestrator().ChunkProcessingOrchestrator(ctx);
+
+        Assert.Equal(1, result.Errors);
+        Assert.Equal("doc-2", Assert.Single(result.FailedDocuments).DocumentId);
+        Assert.Equal(2, result.Results.Count);
+    }
 }
