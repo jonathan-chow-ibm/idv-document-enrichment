@@ -17,6 +17,9 @@ public sealed class DocumentTypeDefinition
     public string Description { get; set; } = string.Empty;
     public List<string> DecisionRules { get; set; } = [];
     public List<FieldDefinition> SpecificFields { get; set; } = [];
+    // When false, Agent 2 metadata extraction is skipped for this type — used for types that only
+    // need classification (e.g. Design Drawing). Absent from a type's YAML entry defaults to true.
+    public bool ExtractionEnabled { get; set; } = true;
 }
 
 public sealed class FieldDefinition
