@@ -19,6 +19,11 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         var log = ctx.CreateReplaySafeLogger<BatchOrchestrator>();
         var batchId = ctx.InstanceId;
 
+        // Validated before the activity calls below so a config typo fails immediately instead of
+        // after a full (read-only, but potentially large) library enumeration.
+        var maxConcurrency = ResolveMaxConcurrency(input.MaxConcurrency, settings.Value.BatchMaxConcurrency);
+        var chunkSize = input.ChunkSize ?? settings.Value.BatchChunkSize;
+
         var retry = TaskOptions.FromRetryPolicy(new RetryPolicy(
             maxNumberOfAttempts: 3,
             firstRetryInterval: TimeSpan.FromSeconds(5),
@@ -37,8 +42,6 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
 
         log.LogInformation("Batch {BatchId}: {Total} documents to process", batchId, unprocessed.Count);
 
-        var maxConcurrency = ResolveMaxConcurrency(input.MaxConcurrency, settings.Value.BatchMaxConcurrency);
-        var chunkSize = input.ChunkSize ?? settings.Value.BatchChunkSize;
         var startedAt = ctx.CurrentUtcDateTime;
 
         // Split into chunks; each chunk orchestrator keeps its own history bounded
