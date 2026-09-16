@@ -5,7 +5,10 @@ namespace IdvEnrichment.Functions.Shared;
 
 public static class SpreadsheetExtractor
 {
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
+    // Public so callers can reject an oversized file before buffering it into memory, rather than
+    // relying solely on the check below (which only guards the XLWorkbook parse, not the buffering
+    // that happens upstream of it).
+    public const long MaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
     private const int ExtractionBudget = 24_000; // chars — generous for table-heavy content
 
     // Sheets matching these keywords get 2× budget share

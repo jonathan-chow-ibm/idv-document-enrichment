@@ -2,6 +2,7 @@ using Azure;
 using Azure.AI.DocumentIntelligence;
 using IdvEnrichment.Functions.Activities;
 using IdvEnrichment.Functions.Models;
+using IdvEnrichment.Functions.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;
@@ -205,6 +206,51 @@ public class ExtractContentActivityTests
 
         Assert.Equal(expectedPageCount, result.PageCount);
         Assert.Equal("pdfpig", result.ExtractionMethod);
+    }
+
+    [Fact]
+    public async Task ExtractSpreadsheetAsync_OversizedContentLength_ReturnsTooLargeWithoutBuffering()
+    {
+        var activity = CreateSpreadsheetActivity(body: [1, 2, 3], contentLength: SpreadsheetExtractor.MaxFileSizeBytes + 1);
+
+        var result = await activity.ExtractContent(new ExtractContentInput(
+            DocumentUrl: "https://example.com/test.xlsx",
+            FileName: "test.xlsx"));
+
+        Assert.True(result.IsTooLarge);
+        Assert.Equal(0, result.PageCount);
+    }
+
+    [Fact]
+    public async Task ExtractSpreadsheetAsync_UnknownContentLength_ReturnsTooLarge()
+    {
+        // A missing/unavailable Content-Length header must not silently bypass the size cap -- it's
+        // treated the same as exceeding it, since the size can't be verified either way.
+        var activity = CreateSpreadsheetActivity(body: [1, 2, 3], contentLength: null);
+
+        var result = await activity.ExtractContent(new ExtractContentInput(
+            DocumentUrl: "https://example.com/test.xlsx",
+            FileName: "test.xlsx"));
+
+        Assert.True(result.IsTooLarge);
+    }
+
+    private static ExtractContentActivity CreateSpreadsheetActivity(byte[] body, long? contentLength)
+    {
+        var handler = new StubHttpMessageHandler(() =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(body),
+            };
+            response.Content.Headers.ContentLength = contentLength;
+            return response;
+        });
+        var httpClient = new HttpClient(handler);
+        var httpClientFactory = new StubHttpClientFactory(httpClient);
+        var docIntelClient = new DocumentIntelligenceClient(new Uri("https://example.com"), new AzureKeyCredential("fake-key"));
+
+        return new ExtractContentActivity(docIntelClient, httpClientFactory, NullLogger<ExtractContentActivity>.Instance);
     }
 
     private static ExtractContentActivity CreateActivity(byte[] pdfBytes)

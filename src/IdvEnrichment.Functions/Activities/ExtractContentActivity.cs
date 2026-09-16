@@ -123,6 +123,16 @@ public sealed class ExtractContentActivity(
 
         var contentLength = response.Content.Headers.ContentLength ?? -1;
 
+        // Reject before buffering the whole body into memory below -- SpreadsheetExtractor's own size
+        // check runs only after that buffering (it guards the XLWorkbook parse, not the OOM risk of the
+        // buffer itself), so the cap has to be enforced here too. An unavailable content-length (-1) is
+        // treated the same as exceeding the cap, since size can't be verified either way (mirrors
+        // ExtractPdfAsync's ExceedsDocumentIntelligenceSizeCap).
+        if (contentLength < 0 || contentLength > SpreadsheetExtractor.MaxFileSizeBytes)
+        {
+            return ExtractionResult.TooLargeForProcessing(input.FileName, Math.Max(contentLength, 0));
+        }
+
         // ClosedXML's OpenXML repair path (used on malformed .xlsx/.xlsm packages) requires a seekable
         // stream, and HttpClient's own stream is forward-only. Buffer into memory before handing off.
         using var stream = new MemoryStream();
