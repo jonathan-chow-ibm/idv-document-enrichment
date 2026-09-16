@@ -149,6 +149,7 @@ public static class SpreadsheetExtractor
     // Some .xlsm cells carry a date format applied to a numeric serial outside the representable
     // DateTime range (corrupt or misapplied formatting, not an actual date) -- GetFormattedString()
     // throws trying to convert that serial to a DateTime instead of just rendering the number.
+    // Fall back to the raw value rather than a placeholder, so the underlying figure isn't lost.
     private static string SafeFormattedString(IXLCell cell)
     {
         try
@@ -157,7 +158,7 @@ public static class SpreadsheetExtractor
         }
         catch (ArgumentOutOfRangeException)
         {
-            return "[unreadable value]";
+            return cell.Value.ToString();
         }
     }
 }
