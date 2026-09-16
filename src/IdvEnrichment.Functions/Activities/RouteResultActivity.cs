@@ -18,7 +18,8 @@ public sealed class RouteResultActivity(
         CancellationToken ct = default)
     {
         var taxonomy = await taxonomyLoader.LoadAsync(ct);
-        var (decision, lowConfidenceCategories) = DetermineRouting(input.Metadata, taxonomy);
+        var (decision, lowConfidenceCategories) = DetermineRouting(
+            input.Metadata, taxonomy, settings.Value.ConfidenceThresholdDefault, input.ExtractionExcludedByType);
 
         var result = new EnrichmentResult(
             DocumentId: input.Message.DocumentId,
@@ -82,20 +83,28 @@ public sealed class RouteResultActivity(
         telemetry.TrackEvent("DocumentEnriched", properties, metrics);
     }
 
-    private (RoutingDecision Decision, IReadOnlyList<string> LowConfidenceCategories) DetermineRouting(
+    // internal static (not an instance method) so tests can call it directly with no TaxonomyLoader,
+    // TelemetryClient, or IOptions<PipelineSettings> to construct — mirrors DocumentOrchestrator.ResolveMaxPages.
+    internal static (RoutingDecision Decision, IReadOnlyList<string> LowConfidenceCategories) DetermineRouting(
         MetadataExtractionResult? metadata,
-        TaxonomyData taxonomy)
+        TaxonomyData taxonomy,
+        double defaultConfidenceThreshold,
+        bool extractionExcludedByType = false)
     {
         if (metadata is null)
         {
-            return (RoutingDecision.Review, []);
+            // Deliberately excluded from extraction by taxonomy config — not a failure or a
+            // low-confidence skip, so it should reach Write/success rather than Review.
+            return extractionExcludedByType
+                ? (RoutingDecision.Write, [])
+                : (RoutingDecision.Review, []);
         }
 
         var thresholds = taxonomy.Thresholds;
         var universal = taxonomy.UniversalFieldNames();
         var defaultThreshold = thresholds.Agent2Content.TryGetValue("default", out var d)
             ? d
-            : settings.Value.ConfidenceThresholdDefault;
+            : defaultConfidenceThreshold;
 
         var lowConfidence = new List<string>();
         foreach (var (name, classification) in metadata.Fields)
