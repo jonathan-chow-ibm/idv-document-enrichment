@@ -28,13 +28,15 @@ public sealed record ClassificationCandidateEntry(
     [property: JsonPropertyName("confidence")] double Confidence);
 
 /// <summary>A document whose classification confidence was low enough that Agent 1 also surfaced
-/// alternative candidate types -- worth a human's attention when triaging results.</summary>
+/// alternative candidate types, or whose primary pick didn't match the taxonomy -- worth a human's
+/// attention when triaging results.</summary>
 public sealed record LowConfidenceClassificationEntry(
     [property: JsonPropertyName("documentId")] string DocumentId,
     [property: JsonPropertyName("fileName")] string FileName,
     [property: JsonPropertyName("documentType")] string DocumentType,
     [property: JsonPropertyName("confidence")] double Confidence,
-    [property: JsonPropertyName("candidates")] IReadOnlyList<ClassificationCandidateEntry> Candidates);
+    [property: JsonPropertyName("candidates")] IReadOnlyList<ClassificationCandidateEntry> Candidates,
+    [property: JsonPropertyName("unrecognizedType")] string? UnrecognizedType = null);
 
 public sealed record ChunkResult(
     [property: JsonPropertyName("results")] IReadOnlyList<BatchDocumentEntry> Results,

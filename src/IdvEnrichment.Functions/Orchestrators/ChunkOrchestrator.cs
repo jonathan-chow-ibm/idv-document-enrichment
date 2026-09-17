@@ -153,12 +153,14 @@ public sealed class ChunkOrchestrator
         }
     }
 
-    // Internal for testability: Agent 1 only populates Candidates when it couldn't confidently settle
-    // on one type, so this is null whenever there's nothing worth surfacing to a human reviewer.
+    // Internal for testability: null whenever there's nothing worth surfacing to a human reviewer --
+    // Agent 1 only populates Candidates when it couldn't confidently settle on one type, and
+    // UnrecognizedType is only set when the primary pick itself didn't match the taxonomy.
     internal static LowConfidenceClassificationEntry? BuildLowConfidenceEntry(
         string documentId, string fileName, TypeClassificationResult classification)
     {
-        if (classification.Candidates is not { Count: > 0 } candidates)
+        var candidates = classification.Candidates ?? [];
+        if (candidates.Count == 0 && classification.UnrecognizedType is null)
         {
             return null;
         }
@@ -171,6 +173,7 @@ public sealed class ChunkOrchestrator
             candidates
                 // Already a string — carries the model's own wording, including types outside the taxonomy.
                 .Select(c => new ClassificationCandidateEntry(c.DocumentType, c.Confidence))
-                .ToList());
+                .ToList(),
+            classification.UnrecognizedType);
     }
 }

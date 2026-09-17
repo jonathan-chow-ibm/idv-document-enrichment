@@ -328,15 +328,18 @@ public sealed class GenerateBatchReportActivity(
         if (r.LowConfidenceClassifications.Count > 0)
         {
             sb.AppendLine("<h2>Low-Confidence Classifications</h2>");
-            sb.AppendLine("<p>Documents whose classification confidence was low enough that alternative candidate types were also surfaced — worth a human's attention when triaging results.</p>");
-            sb.AppendLine("<table><thead><tr><th>File Name</th><th>Document Type</th><th>Confidence</th><th>Candidates</th></tr></thead><tbody>");
+            sb.AppendLine("<p>Documents whose classification confidence was low enough that alternative candidate types were also surfaced, or whose primary type didn't match the taxonomy — worth a human's attention when triaging results.</p>");
+            sb.AppendLine("<table><thead><tr><th>File Name</th><th>Document Type</th><th>Confidence</th><th>Candidates</th><th>Unrecognized Type</th></tr></thead><tbody>");
             foreach (var entry in r.LowConfidenceClassifications)
             {
                 var safeFileName = System.Net.WebUtility.HtmlEncode(entry.FileName);
                 var safeDocumentType = System.Net.WebUtility.HtmlEncode(entry.DocumentType);
                 var candidates = string.Join(", ", entry.Candidates.Select(c =>
                     $"{System.Net.WebUtility.HtmlEncode(c.DocumentType)} ({c.Confidence:P0})"));
-                sb.AppendLine($"<tr><td>{safeFileName}</td><td>{safeDocumentType}</td><td>{entry.Confidence:P0}</td><td>{candidates}</td></tr>");
+                var unrecognized = entry.UnrecognizedType is null
+                    ? string.Empty
+                    : System.Net.WebUtility.HtmlEncode(entry.UnrecognizedType);
+                sb.AppendLine($"<tr><td>{safeFileName}</td><td>{safeDocumentType}</td><td>{entry.Confidence:P0}</td><td>{candidates}</td><td>{unrecognized}</td></tr>");
             }
             sb.AppendLine("</tbody></table>");
         }

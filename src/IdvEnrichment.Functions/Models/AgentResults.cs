@@ -11,7 +11,12 @@ public sealed record TypeClassificationResult(
     [property: JsonPropertyName("durationMs")] int DurationMs = 0,
     // Populated by Agent 1 only when it couldn't confidently settle on one type -- alternative
     // types it considered, so "Other"/low-confidence results are actionable instead of a dead end.
-    [property: JsonPropertyName("candidates")] IReadOnlyList<ClassificationCandidate>? Candidates = null);
+    [property: JsonPropertyName("candidates")] IReadOnlyList<ClassificationCandidate>? Candidates = null,
+    // Populated by ClassifyTypeActivity from the raw response, not the model's declared fields: when the
+    // model's primary pick doesn't match a taxonomy label, TolerantDocumentTypeConverter silently coerces
+    // it to Other so write-back doesn't fail -- this recovers what the model actually said before that
+    // happens, so a human reviewer sees the real guess instead of a dead-end "Other".
+    [property: JsonPropertyName("unrecognizedType")] string? UnrecognizedType = null);
 
 /// <summary>An alternative document type Agent 1 considered but didn't settle on.</summary>
 public sealed record ClassificationCandidate(

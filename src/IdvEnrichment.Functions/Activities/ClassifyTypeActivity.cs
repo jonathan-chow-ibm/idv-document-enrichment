@@ -72,6 +72,25 @@ public sealed class ClassifyTypeActivity(
             InputTokens = completion.Value.Usage?.InputTokenCount ?? 0,
             OutputTokens = completion.Value.Usage?.OutputTokenCount ?? 0,
             DurationMs = (int)sw.Elapsed.TotalMilliseconds,
+            UnrecognizedType = DetermineUnrecognizedType(rawJson),
         };
+    }
+
+    // Internal for testability. TolerantDocumentTypeConverter already coerced the deserialized result's
+    // DocumentType to Other by the time we get here, so the model's actual wording has to be recovered
+    // straight from the raw response -- not from the parsed record.
+    internal static string? DetermineUnrecognizedType(string rawJson)
+    {
+        using var doc = JsonDocument.Parse(rawJson);
+        if (!doc.RootElement.TryGetProperty("documentType", out var typeElement) ||
+            typeElement.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var rawLabel = typeElement.GetString();
+        return string.IsNullOrWhiteSpace(rawLabel) || TolerantDocumentTypeConverter.TryParseWireName(rawLabel, out _)
+            ? null
+            : rawLabel;
     }
 }

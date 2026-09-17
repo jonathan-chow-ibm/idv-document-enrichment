@@ -71,6 +71,24 @@ public class ChunkOrchestratorTests
         Assert.Equal("Proposal/Pitch Deck", candidate.DocumentType);
     }
 
+    [Fact]
+    public void BuildLowConfidenceEntry_UnrecognizedTypeNoCandidates_ReturnsEntry()
+    {
+        // The primary pick alone can be worth surfacing even when Agent 1 never populated Candidates --
+        // e.g. it answered confidently with a label outside the taxonomy and got coerced to Other.
+        var classification = new TypeClassificationResult(
+            DocumentType.Other,
+            0.9,
+            "confident but out of taxonomy",
+            UnrecognizedType: "Marketing Flyer");
+
+        var entry = ChunkOrchestrator.BuildLowConfidenceEntry("doc-1", "flyer.pdf", classification);
+
+        Assert.NotNull(entry);
+        Assert.Empty(entry.Candidates);
+        Assert.Equal("Marketing Flyer", entry.UnrecognizedType);
+    }
+
     private static ChunkRequest BuildRequest(LibraryDocument doc) =>
         new(Documents: [doc],
             BatchId: "batch-1",
