@@ -6,16 +6,23 @@
     Columns and content types mirror docs/taxonomy/taxonomy.yaml (v4) and ADR-009.
     Review is handled inline via a filtered library view on AIProcessingStatus (ADR-006).
 
-    Idempotent, including Choice value lists. Re-run after editing $documentTypes (or any other
-    choice set) and the new values are deployed to the site column AND to every target library's
-    own copy — patching the site column alone does NOT reach libraries that already have it, so
-    both scopes are reconciled. Columns already matching the script are left untouched, so a
-    no-change re-run performs reads only.
+    Idempotent. Re-run after editing $columns, $contentTypeDefs or any choice set and the change is
+    deployed; a no-change re-run performs reads only. Two things are reconciled beyond creation,
+    both because a site-scope change does NOT reach libraries that already have the column or
+    content type — each library holds its own copy:
+
+      * Choice value lists — new values are added to the site column AND to every target library's
+        own copy.
+      * Content type column membership — a column newly added to $contentTypeDefs is added to each
+        target library's content types, not just the site ones.
 
     Choice reconciliation is additive by default: script values are guaranteed present and any
     deployed-only values are preserved, since one may still be set on existing documents. Use
-    -PruneChoices for an exact match. Only choices are reconciled — column types and other facets
-    are not, because changing those can destroy existing data.
+    -PruneChoices for an exact match. Column types and other facets are NOT reconciled, and columns
+    are never removed, because both can destroy existing data.
+
+    Run with -DryRun first. It reports what it inspected (a [CHECK] line per content type) as well
+    as what it would change, and its summary counters tally planned work.
 
 .PARAMETER SiteUrl
     SharePoint site URL. Example: "contoso.sharepoint.com:/sites/ActiveProjects"
@@ -39,8 +46,15 @@
     List the site's document libraries showing which would be targeted and which skipped (and
     why), then exit without changing anything. Use this before a real run.
 
+.PARAMETER PruneChoices
+    Make Choice lists an exact match to the script by also REMOVING deployed values the script no
+    longer defines. Off by default: a removed value may still be set on existing documents, leaving
+    those items holding a value the column no longer offers.
+
 .PARAMETER DryRun
-    If set, shows what would be created without making changes.
+    Report what would be created, updated and added without making changes. Prints a [CHECK] line
+    per library content type showing columns seen / wanted / missing, so "nothing to do" is
+    distinguishable from "the comparison never ran".
 
 .EXAMPLE
     # Single library
@@ -656,11 +670,11 @@ Write-Host "  Libraries       : $(@($targetLists).Count) targeted ($(@($targetLi
 # In dry run the counters below tally PLANNED work. They are incremented on the dry-run branches on
 # purpose: a summary reading "0 added" under a screen full of "Would add" lines is worse than no
 # summary at all, and that discrepancy has already masked two real bugs in this pass.
-$verb = if ($DryRun) { "would be" } else { "" }
+$verb = if ($DryRun) { " would be" } else { "" }
 Write-Host "  Mode            : $(if ($DryRun) { 'DRY RUN — nothing was changed' } else { 'APPLIED' })" -ForegroundColor $(if ($DryRun) { "Yellow" } else { "Green" })
 Write-Host "  Columns         : $($columns.Count) defined | $created $(if ($DryRun) { 'to create' } else { 'created' }) | $skipped existing"
-Write-Host "  Choice sync     : $siteChoicesUpdated site + $listChoicesUpdated library column(s) $verb updated$(if ($PruneChoices) { ' (prune enabled)' })"
-Write-Host "  Column members  : $listColumnsAdded column(s) $verb added to library content types"
+Write-Host "  Choice sync     : $siteChoicesUpdated site + $listChoicesUpdated library column(s)$verb updated$(if ($PruneChoices) { ' (prune enabled)' })"
+Write-Host "  Column members  : $listColumnsAdded column(s)$verb added to library content types"
 Write-Host "  Content Types   : $($contentTypeDefs.Count) defined | $ctCreated created | $ctSkipped existing"
 Write-Host ""
 Write-Host "Site content type IDs:" -ForegroundColor Cyan
