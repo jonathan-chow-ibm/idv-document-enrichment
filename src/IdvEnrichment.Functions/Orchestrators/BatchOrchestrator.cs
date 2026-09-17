@@ -32,6 +32,12 @@ public sealed class BatchOrchestrator(IOptions<PipelineSettings> settings)
         var target = await ctx.CallActivityAsync<ResolvedSharePointTarget>(
             "ResolveSharePointTarget", input.Url, retry);
 
+        // Also before EnumerateLibrary, for the same reason. Classify-only runs still write
+        // DocumentType unconditionally (see WriteMetadataActivity), so they still need this check --
+        // just narrowed to DocumentType alone, since they never write the taxonomy Choice columns.
+        await ctx.CallActivityAsync(
+            "ValidateSharePointSchema", new ValidateSharePointSchemaInput(target, input.ClassifyOnly), retry);
+
         var documents = await ctx.CallActivityAsync<IReadOnlyList<LibraryDocument>>(
             "EnumerateLibrary", target, retry);
 

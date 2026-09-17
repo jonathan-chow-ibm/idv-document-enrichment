@@ -201,6 +201,13 @@ public sealed record ExtractDrawingDetailsInput(
     [property: JsonPropertyName("fileName")] string FileName,
     [property: JsonPropertyName("extractedText")] string ExtractedText = "");
 
+public sealed record ValidateSharePointSchemaInput(
+    [property: JsonPropertyName("target")] ResolvedSharePointTarget Target,
+    // Classify-only runs never extract metadata (DocumentOrchestrator leaves it null), so
+    // WriteMetadataActivity never reaches the taxonomy Choice columns for them -- only the
+    // unconditionally-written DocumentType column needs to be in sync.
+    [property: JsonPropertyName("classifyOnly")] bool ClassifyOnly = false);
+
 public sealed record WriteMetadataInput(
     [property: JsonPropertyName("siteId")] string SiteId,
     [property: JsonPropertyName("driveId")] string DriveId,
