@@ -45,7 +45,7 @@ public sealed class ValidateSharePointSchemaActivity(
             .Where(c => !string.IsNullOrEmpty(c.Name))
             .ToDictionary(c => c.Name!, StringComparer.OrdinalIgnoreCase);
 
-        var expected = ExpectedChoiceColumns(taxonomy, input.ClassifyOnly);
+        var expected = ExpectedColumns(taxonomy, input.ClassifyOnly);
         var problems = FindSchemaProblems(columns, expected);
 
         if (problems.Count > 0)
@@ -60,31 +60,59 @@ public sealed class ValidateSharePointSchemaActivity(
             target.LibraryName, columns.Count, expected.Count);
     }
 
+    // Written directly by WriteMetadataActivity.BuildFieldsPayload outside the taxonomy loop --
+    // existence only, since these are text/number/date/JSON columns with no allowed values to
+    // compare. A missing one gets the same Graph 400 that rejects the entire fields PATCH as a
+    // taxonomy-invalid Choice value does. DocumentType is excluded here because it's checked above
+    // with its real allowed values from the enum; AIProcessingStatus is excluded because
+    // BuildFieldsPayload skips writing it for classify-only runs (see ProcessingStatusColumn).
+    // Keep in sync with the literal AdditionalData[...] keys in BuildFieldsPayload -- there is a
+    // guard test for this in WriteMetadataActivityTests.
+    internal static readonly string[] RequiredColumns =
+    [
+        "AIConfidence", "AIClassifiedDate", "SuggestedFields",
+        "AIOriginalClassification", "AISuggestedType",
+    ];
+
+    // AIProcessingStatus doubles as Power Automate's re-trigger guard, and BuildFieldsPayload
+    // deliberately skips writing it for classify-only runs -- so it's only required when a full
+    // run would actually write it.
+    internal const string ProcessingStatusColumn = "AIProcessingStatus";
+
     // DocumentType's allowed values come from the enum, not taxonomy.yaml -- taxonomy.yaml's document_types
     // list is keyed by label already, but the enum (via JsonStringEnumMemberName) is what WriteMetadataActivity
     // actually serializes onto the column, so that's the source of truth to check against.
     //
-    // classifyOnly narrows the check to DocumentType alone: DocumentOrchestrator leaves Metadata null for
-    // classify-only runs, so WriteMetadataActivity's taxonomy.ContentFields() loop reads only empty strings
-    // for every field and never reaches a taxonomy Choice column with a real value. DocumentType is written
-    // unconditionally either way, so it's the only column a classify-only run can actually fail on.
-    internal static IReadOnlyList<(string ColumnName, IReadOnlyList<string> ExpectedValues)> ExpectedChoiceColumns(
+    // classifyOnly narrows the taxonomy Choice columns and AIProcessingStatus out of the check:
+    // DocumentOrchestrator leaves Metadata null for classify-only runs, so WriteMetadataActivity's
+    // taxonomy.ContentFields() loop reads only empty strings and never reaches a taxonomy Choice
+    // column with a real value, and BuildFieldsPayload skips AIProcessingStatus outright for them.
+    // Everything in RequiredColumns, plus DocumentType, is written unconditionally either way.
+    internal static IReadOnlyList<(string ColumnName, IReadOnlyList<string> ExpectedValues)> ExpectedColumns(
         TaxonomyData taxonomy, bool classifyOnly = false)
     {
         var documentTypeLabels = Enum.GetValues<DocumentType>()
             .Select(v => JsonSerializer.Serialize(v).Trim('"'))
             .ToList();
 
+        var required = RequiredColumns.Select(name => (name, (IReadOnlyList<string>)Array.Empty<string>()));
+
         if (classifyOnly)
         {
-            return [("DocumentType", documentTypeLabels)];
+            return [("DocumentType", documentTypeLabels), .. required];
         }
 
         var choiceColumns = taxonomy.ContentFields()
             .Where(f => f.AllowedValues.Count > 0 && !string.IsNullOrEmpty(f.SharepointColumn))
             .Select(f => (f.SharepointColumn, (IReadOnlyList<string>)f.AllowedValues));
 
-        return [("DocumentType", documentTypeLabels), .. choiceColumns];
+        return
+        [
+            ("DocumentType", documentTypeLabels),
+            .. required,
+            (ProcessingStatusColumn, (IReadOnlyList<string>)Array.Empty<string>()),
+            .. choiceColumns,
+        ];
     }
 
     // Internal for testability: pure comparison against a Graph column snapshot, no SDK calls.

@@ -293,4 +293,30 @@ public class WriteMetadataActivityTests
 
         Assert.False(payload.AdditionalData!.ContainsKey("AISuggestedType"));
     }
+
+    [Fact]
+    public void BuildFieldsPayload_LiteralKeys_MatchValidateSharePointSchemaActivitysRequiredColumns()
+    {
+        // Guard against ValidateSharePointSchemaActivity's RequiredColumns/ProcessingStatusColumn
+        // drifting out of sync with the literal (non-taxonomy-driven) keys this method actually writes.
+        // unrecognizedType + classifyOnly: false surfaces every optional literal key at once.
+        var taxonomy = BuildTaxonomy();
+        var payload = WriteMetadataActivity.BuildFieldsPayload(
+            BuildResult(fields: null, classifyOnly: false, unrecognizedType: "Marketing Flyer"),
+            taxonomy,
+            DateTimeOffset.UnixEpoch);
+
+        // Derived from the same taxonomy passed above, not hardcoded, so a field added to
+        // BuildTaxonomy() doesn't require updating this test too.
+        var taxonomyDrivenColumns = new HashSet<string>(
+            taxonomy.ContentFields().Select(f => f.SharepointColumn), StringComparer.OrdinalIgnoreCase);
+
+        var literalKeys = payload.AdditionalData!.Keys.Where(k => !taxonomyDrivenColumns.Contains(k));
+
+        var expectedLiteralKeys = ValidateSharePointSchemaActivity.RequiredColumns
+            .Append("DocumentType")
+            .Append(ValidateSharePointSchemaActivity.ProcessingStatusColumn);
+
+        Assert.Equal(expectedLiteralKeys.OrderBy(k => k), literalKeys.OrderBy(k => k));
+    }
 }
