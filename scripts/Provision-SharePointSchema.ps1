@@ -6,6 +6,17 @@
     Columns and content types mirror docs/taxonomy/taxonomy.yaml (v4) and ADR-009.
     Review is handled inline via a filtered library view on AIProcessingStatus (ADR-006).
 
+    Idempotent, including Choice value lists. Re-run after editing $documentTypes (or any other
+    choice set) and the new values are deployed to the site column AND to every target library's
+    own copy — patching the site column alone does NOT reach libraries that already have it, so
+    both scopes are reconciled. Columns already matching the script are left untouched, so a
+    no-change re-run performs reads only.
+
+    Choice reconciliation is additive by default: script values are guaranteed present and any
+    deployed-only values are preserved, since one may still be set on existing documents. Use
+    -PruneChoices for an exact match. Only choices are reconciled — column types and other facets
+    are not, because changing those can destroy existing data.
+
 .PARAMETER SiteUrl
     SharePoint site URL. Example: "contoso.sharepoint.com:/sites/ActiveProjects"
 
@@ -61,6 +72,11 @@ param(
 
     # List the site's document libraries with their target/skip classification, then exit.
     [switch]$ListLibraries,
+
+    # Exact-match Choice lists: also REMOVE deployed values the script no longer defines. Off by
+    # default because a removed value may still be set on existing documents, which would leave
+    # those items holding a value the column no longer offers.
+    [switch]$PruneChoices,
 
     [switch]$DryRun
 )
@@ -135,7 +151,9 @@ if ($AllLibraries) {
     Write-Host "Libraries discovered ($(@($targetLists).Count)):" -ForegroundColor Cyan
     foreach ($l in $targetLists) { Write-Host "  - $($l.displayName)" -ForegroundColor White }
 } else {
-    $targetLists = $candidateLists | Where-Object { $_.displayName -eq $DocumentLibraryName }
+    # @() matters: a single Graph list is a Hashtable, so an unwrapped $targetLists.Count would
+    # report its KEY count (13) instead of 1 in the summary.
+    $targetLists = @($candidateLists | Where-Object { $_.displayName -eq $DocumentLibraryName })
     if (-not $targetLists) {
         # Distinguish "system library, refused" from "no such library" — the fix differs.
         if ($systemLibraries.displayName -contains $DocumentLibraryName) {
@@ -218,15 +236,105 @@ $columns = @(
     @{ name = "DrawingTitle"; displayName = "Drawing Title"; group = "IDV Document Columns"; text = @{} }
 )
 
-# --- Create site columns (must be site-level so they can be linked to site content types) ---
+# --- Choice convergence ------------------------------------------------------------------------
+# Creating a column is not enough to keep it correct: adding a value to $documentTypes and re-running
+# used to report [EXISTS] and change nothing, leaving SharePoint's Choice column without the value.
+# WriteMetadataActivity writes DocumentType unguarded, so one missing value makes Graph reject the
+# ENTIRE fields PATCH and the document loses all metadata. Hence this converge pass.
+#
+# Two scopes must be patched, not one. A Choice list is copied into each library when the column
+# arrives there, and patching the SITE column does NOT propagate to libraries that already have it
+# — verified 2026-09-17: after the site column went to 25 values, all 69 provisioned libraries still
+# reported 24. The identical GUID across site/list/content-type scope is field lineage, not a shared
+# object. The pipeline writes to LIST columns, so a site-only patch looks right in the admin UI and
+# fixes nothing.
+#
+# Scope limit: choices only. Other facets (type changes, text→number, allowMultipleLines) are NOT
+# reconciled — those can destroy existing data and belong in a considered migration, not an
+# idempotent provisioning run.
+$desiredChoices = @{}
+foreach ($col in $columns) {
+    if ($col.ContainsKey('choice')) { $desiredChoices[$col.name] = @($col.choice.choices) }
+}
+
+# Returns the choice array to write, or $null when the deployed column already satisfies the script.
+# Additive by default: script values are guaranteed present, deployed-only extras are preserved
+# (a value may be in use by existing documents). -PruneChoices makes it an exact match instead.
+function Get-ConvergedChoices {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Desired,
+        # AllowEmptyString because a malformed facet can contain a blank entry; binding must not fail
+        # mid-run over it. Blanks are filtered below.
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowNull()][AllowEmptyString()][string[]]$Deployed
+    )
+
+    # Drop nulls/blanks: a column with no choice facet arrives as @($null), which would otherwise be
+    # carried through as a bogus empty choice value.
+    $have    = @($Deployed | Where-Object { -not [string]::IsNullOrEmpty($_) })
+    $missing = @($Desired | Where-Object { $have -notcontains $_ })
+    $extra   = @($have    | Where-Object { $Desired -notcontains $_ })
+
+    # Compared as sets: ordering alone never triggers a write, otherwise any difference in the order
+    # SharePoint returns would make every run rewrite every column. Order still converges to the
+    # script's whenever a real value difference forces the patch.
+    if ($missing.Count -eq 0 -and ($extra.Count -eq 0 -or -not $PruneChoices)) { return $null }
+
+    # Script order wins; kept extras are appended so their existing values stay selectable.
+    $result = if ($PruneChoices) { @($Desired) } else { @($Desired) + $extra }
+    return ,$result
+}
+
+# PATCHes a column's choices in place, preserving the rest of the choice facet — sending only
+# `choices` can reset allowTextEntry/displayAs to defaults.
+function Set-ColumnChoices {
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [Parameter(Mandatory)]$DeployedColumn,
+        [Parameter(Mandatory)][string[]]$Choices
+    )
+
+    $body = @{
+        choice = @{
+            allowTextEntry = [bool]$DeployedColumn.choice.allowTextEntry
+            choices        = $Choices
+            displayAs      = $DeployedColumn.choice.displayAs
+        }
+    } | ConvertTo-Json -Depth 5
+
+    Invoke-MgGraphRequest -Method PATCH -Uri $Uri -Body $body -ContentType "application/json" | Out-Null
+}
+
+# --- Create or converge site columns (site-level so they can be linked to site content types) ---
 Write-Host "`n=== Site Columns (v4) ===" -ForegroundColor Cyan
 
 $existingCols = (Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/columns").value
 
-$created = 0; $skipped = 0
+$created = 0; $skipped = 0; $siteChoicesUpdated = 0
 foreach ($col in $columns) {
     $exists = $existingCols | Where-Object { $_.name -eq $col.name }
     if ($exists) {
+        # Existing column: reconcile its choice list rather than assuming it is still correct.
+        $desired = $desiredChoices[$col.name]
+        if ($desired) {
+            $converged = Get-ConvergedChoices -Desired $desired -Deployed @($exists.choice.choices)
+            if ($converged) {
+                $added   = @($converged | Where-Object { @($exists.choice.choices) -notcontains $_ })
+                $removed = @(@($exists.choice.choices) | Where-Object { $converged -notcontains $_ })
+                $delta   = @()
+                if ($added.Count)   { $delta += "+$($added -join ', ')" }
+                if ($removed.Count) { $delta += "-$($removed -join ', ')" }
+
+                if ($DryRun) {
+                    Write-Host "  [DRY RUN] Would update choices: $($col.displayName)  ($($delta -join ' '))" -ForegroundColor DarkGray
+                } else {
+                    Set-ColumnChoices -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/columns/$($exists.id)" `
+                        -DeployedColumn $exists -Choices $converged
+                    Write-Host "  [UPDATED] $($col.displayName)  ($($delta -join ' '))" -ForegroundColor Green
+                    $siteChoicesUpdated++
+                }
+                continue
+            }
+        }
         Write-Host "  [EXISTS] $($col.displayName)" -ForegroundColor Yellow
         $skipped++
         continue
@@ -363,6 +471,8 @@ foreach ($ctDef in $contentTypeDefs) {
 # --- Apply content types to each target library ---
 Write-Host "`n=== Apply to Libraries ===" -ForegroundColor Cyan
 
+$listChoicesUpdated = 0
+
 foreach ($targetList in $targetLists) {
     $docListId   = $targetList.id
     $docListName = $targetList.displayName
@@ -405,13 +515,51 @@ foreach ($targetList in $targetLists) {
             Write-Host "    [ADDED] $ctName" -ForegroundColor Green
         }
     }
+
+    # --- Converge this library's copy of each Choice column ---
+    # The site-level patch above does not reach here (see the Choice convergence notes), and this is
+    # the scope the pipeline actually writes to. Read-only when already in sync, so a second run
+    # costs one GET per library and no writes.
+    if ($desiredChoices.Count -gt 0) {
+        $libColumns = (Invoke-MgGraphRequest -Method GET `
+            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns").value
+
+        $libUpdated = 0; $libInSync = 0; $libAbsent = 0
+        foreach ($colName in $desiredChoices.Keys) {
+            $libCol = $libColumns | Where-Object { $_.name -eq $colName }
+            if (-not $libCol) {
+                # Expected on a library that has no IDV content types yet — addCopy above brings the
+                # columns in, and the next run converges them.
+                $libAbsent++
+                continue
+            }
+
+            $converged = Get-ConvergedChoices -Desired $desiredChoices[$colName] -Deployed @($libCol.choice.choices)
+            if (-not $converged) { $libInSync++; continue }
+
+            $added = @($converged | Where-Object { @($libCol.choice.choices) -notcontains $_ })
+            if ($DryRun) {
+                Write-Host "    [DRY RUN] Would update '$colName' choices ($($added.Count) added)" -ForegroundColor DarkGray
+            } else {
+                Set-ColumnChoices -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns/$($libCol.id)" `
+                    -DeployedColumn $libCol -Choices $converged
+                Write-Host "    [UPDATED] '$colName' choices ($($added -join ', '))" -ForegroundColor Green
+                $libUpdated++
+            }
+        }
+        $listChoicesUpdated += $libUpdated
+        if ($libAbsent -gt 0 -and -not $DryRun) {
+            Write-Host "    Choice columns: $libInSync in sync, $libUpdated updated, $libAbsent not on library yet" -ForegroundColor DarkGray
+        }
+    }
 }
 
 # --- Summary ---
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Write-Host "  Site            : $($site.displayName)"
-Write-Host "  Libraries       : $($targetLists.Count) targeted ($($targetLists.displayName -join ', '))"
+Write-Host "  Libraries       : $(@($targetLists).Count) targeted ($(@($targetLists).displayName -join ', '))"
 Write-Host "  Columns         : $($columns.Count) defined | $created created | $skipped existing"
+Write-Host "  Choice sync     : $siteChoicesUpdated site column(s) updated | $listChoicesUpdated library column(s) updated$(if ($PruneChoices) { ' (prune enabled)' })"
 Write-Host "  Content Types   : $($contentTypeDefs.Count) defined | $ctCreated created | $ctSkipped existing"
 Write-Host ""
 Write-Host "Site content type IDs:" -ForegroundColor Cyan

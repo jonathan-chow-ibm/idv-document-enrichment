@@ -11,7 +11,9 @@ of these were learned the hard way and will silently waste your time otherwise.
 |---|---|---|---|
 | **1** | **Prompts (`*.hbs`) are embedded resources** | Editing a `.hbs` and re-running does nothing — the old prompt is still compiled into the DLL | **Always `dotnet build` and restart `func start` after editing a prompt.** Tell-tale: your new output field comes back `null` |
 | **2** | **`DocumentType` enum must match `taxonomy.yaml`** | If Agent 1 returns a label the C# enum lacks, deserialization **throws** → 3 retries → error path | Adding/renaming a document type = edit **both** `taxonomy.yaml` *and* `Models/Enums.cs` |
-| **3** | **Provisioning script duplicates 4 choice lists** | Change a type in YAML and the SharePoint Choice column no longer accepts it → **the whole write-back PATCH 400s** | Update `Provision-SharePointSchema.ps1` in the same commit |
+| **3** | **Provisioning script duplicates 4 choice lists** | Change a type in YAML and the SharePoint Choice column no longer accepts it → **the whole write-back PATCH 400s** | Update `Provision-SharePointSchema.ps1` in the same commit, **then re-run it** — the script now converges existing choice columns, but only when you run it |
+| **3a** | **A site column patch does NOT reach existing libraries** | Each library holds its own copy of a Choice list. Patching the site column alone looks correct in the admin UI and changes nothing for the pipeline, which writes to **list** columns | Never hand-patch the site column. Re-run `Provision-SharePointSchema.ps1` — it reconciles both scopes. Verified 2026-09-17: site column 24→25 left all 69 libraries on 24 |
+| **3b** | **`DocumentType` is the one Choice column written unguarded** | Taxonomy content fields are dropped on mismatch (`TryMatchAllowedValue`); `DocumentType` is not, so one missing choice value costs the document **every** field, not one | See "Why a missing choice value is worse than it looks" below |
 | **4** | **Taxonomy is cached per app instance** (`Lazy<Task>`) | Editing the blob/file doesn't affect a running app | **Restart the Function App** after changing the taxonomy |
 | **5** | **Removing a column: pipeline first, SharePoint last** | Deleting a live column while the pipeline still writes it → unknown-column 400 → **all write-back fails**, not just that field | Remove from `taxonomy.yaml` → redeploy → confirm drained → *then* touch SharePoint. Prefer hide/unlink over delete |
 | **6** | **Concurrency must match quota** | `BatchMaxConcurrency` above what TPM supports → 429s, backoff, slower overall | See "Throughput" below |
@@ -65,7 +67,79 @@ of these were learned the hard way and will silently waste your time otherwise.
    ```
    **The string must match the YAML `label` exactly.**
 3. `Provision-SharePointSchema.ps1` → add the label to `$documentTypes`
-4. Rebuild, redeploy, re-run provisioning
+4. Rebuild, redeploy, **re-run provisioning** — step 3 alone changes nothing in SharePoint
+
+> **Step 4 is not optional and used to be silently skippable.** The provisioning script was
+> create-only: it reported `[EXISTS] Document Type` and never touched the deployed choice list, so
+> a new type could sit in all three code locations while SharePoint rejected it. The script now
+> converges choice lists on every run (site column *and* every library's own copy), so re-running
+> is what deploys the value. Confirm with `-DryRun` first: a clean run prints no
+> `Would update choices` lines.
+
+### Why a missing choice value is worse than it looks
+
+The write-back is **one** `PATCH .../items/{id}/fields` carrying every field. Graph validates the
+whole body, so a single unacceptable value rejects **all** of it — the document ends up with no
+metadata at all, not merely a blank `DocumentType`.
+
+There **is** a guard in the code, but read carefully what it protects against. Every taxonomy
+content field with `allowed_values` goes through `TryMatchAllowedValue`, and unparseable
+`dateTime` / `number` values are skipped — an unmatched value is **omitted** from the payload, so
+the rest of the document's metadata still lands.
+
+That guard compares the AI's output against **`taxonomy.yaml`'s `allowed_values`** — it never reads
+the deployed SharePoint column. So it protects against the AI returning something outside the
+taxonomy; it does **not** protect against the taxonomy and SharePoint disagreeing. Add a value to a
+field's `allowed_values`, skip the provisioning re-run, and that content field will 400 the whole
+PATCH exactly like `DocumentType` — the guard waves it through as valid.
+
+`DocumentType` has no guard at all. In `WriteMetadataActivity.BuildFieldsPayload` it is written
+directly from the enum label:
+
+```csharp
+["DocumentType"] = JsonSerializer.Serialize(result.TypeClassification.DocumentType).Trim('"'),
+```
+
+So the blast radius of one missing choice value is the whole document, and the failure sequence is:
+
+1. `TrySetContentTypeAsync` runs first and **swallows** its own errors — the content type is set.
+2. The fields PATCH 400s. `SdkExceptionHelper` logs the Graph error code and rethrows.
+3. Durable retries the activity **3 times** (5s, 10s, 20s). A 400 is deterministic, so all 3 fail.
+4. `DocumentOrchestrator` catches `TaskFailedException`, sets `WriteBackSucceeded = false`, and
+   records status `write-back-failed`.
+
+The end state is a document **correctly typed** (e.g. `Reports`) with **zero metadata** — which
+looks like a partially-working pipeline rather than a schema problem. Check the batch report's
+`write-back-failed` count and look for the Graph error code in App Insights; the fix is to deploy
+the missing choice value, then re-run those documents.
+
+**Why `TryMatchAllowedValue` can't simply be reused for `DocumentType`.** It validates against the
+taxonomy, and for `DocumentType` the taxonomy always agrees — Agent 1's output is an enum, so
+deserialization already rejects anything the taxonomy lacks (gotcha #2). A taxonomy-based guard
+would never fire on the case that actually hurts, which is taxonomy-vs-SharePoint drift. Guarding
+this properly means reading the deployed column's `choice.choices` at runtime and omitting
+`DocumentType` when the value isn't there — cached per list, the same shape as the existing
+`ContentTypeCache` in the same activity. Not implemented; re-running provisioning is the current
+mitigation.
+
+Three sync axes exist, and only the first two are enforced anywhere:
+
+| Axis | Enforced by | Failure if it drifts |
+|---|---|---|
+| AI output ↔ `taxonomy.yaml` | enum deserialization (types), `TryMatchAllowedValue` (fields) | throws / field omitted |
+| script arrays ↔ deployed SharePoint | `Provision-SharePointSchema.ps1` converge pass, **when re-run** | whole PATCH 400s |
+| `taxonomy.yaml` ↔ script arrays | **nothing** — manual discipline only | whole PATCH 400s |
+
+All three were verified aligned on 2026-09-17.
+
+Two related sharp edges when adding a document type:
+
+- **A missing `[JsonStringEnumMemberName]` silently changes the label.** Without it the enum
+  serializes as the C# identifier — `Cmt` instead of `CMT` — which SharePoint then rejects. The
+  attribute is what makes the label match; it isn't decoration.
+- **`AIProcessingStatus` is also written unguarded** (`"Classified"` / `"Under Review"`), but is
+  safe only because those two literals happen to be in the provisioned choice list. If you ever
+  rename them, rename the column's choices in the same commit.
 
 ### Tune classification accuracy (YAML only — no rebuild)
 
