@@ -102,7 +102,25 @@ document_types:
     description: "Phase I/II ESA and other environmental reports"
   - label: "Geotechnical Report"
     group: "Reports"
-    description: "Geotechnical engineering report"
+    description: "Geotechnical engineering report — pre-construction subsurface investigation (soil borings, soil classification, bearing capacity, foundation recommendations). Not materials testing performed during construction (see CMT)."
+    decision_rules:
+      - "CHECK FIRST: if the report performs a soil boring/subsurface investigation and recommends a foundation type or bearing capacity, it is a Geotechnical Report."
+      - "If instead the report presents test results (e.g. concrete cylinder breaks, compaction/density tests) on samples taken during construction, it is CMT, not a Geotechnical Report."
+  - label: "CMT"
+    group: "Reports"
+    description: "Construction Materials Testing report — concrete cylinder breaks, compaction/density tests, rebar/steel inspection, and similar in-construction materials testing performed by a third-party testing lab. Not the pre-construction subsurface investigation (see Geotechnical Report)."
+    decision_rules:
+      - "CHECK FIRST: if the report presents test results (e.g. concrete cylinder breaks, compaction/density tests, rebar inspection) on samples or work taken/inspected during construction, it is CMT."
+      - "If instead the report is a pre-construction soil boring/subsurface investigation recommending a foundation type or bearing capacity, it is a Geotechnical Report, not CMT."
+    specific_fields:
+      - name: concreteSupplier
+        description: "The ready-mix concrete supplier or batch plant named in the report, if stated."
+      - name: testingFirm
+        description: "The third-party testing laboratory or firm that performed the test."
+      - name: testingTechnician
+        description: "The named technician who performed or is credited with the test."
+      - name: testType
+        description: "The test performed, including its ASTM (or other) standard designation if stated, e.g. \"Compressive Strength Test (ASTM C39)\"."
   - label: "Easement Document"
     group: "Reports"
     description: "Easement, encroachment, or related recorded document"
