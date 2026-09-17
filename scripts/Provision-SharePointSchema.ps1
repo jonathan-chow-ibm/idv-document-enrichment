@@ -152,7 +152,7 @@ $documentTypes = @(
     "Commission Agreement", "Loan Agreement", "JV Agreement", "Development Agreement",
     "Letter of Intent", "Term Sheet",
     "Survey", "Plat", "Design Drawing",
-    "Closing Statement", "Environmental Survey", "Geotechnical Report", "Easement Document",
+    "Closing Statement", "Environmental Survey", "Geotechnical Report", "CMT", "Easement Document",
     "Proforma", "Budget / Cost Estimate", "Bid Tab", "Draw Request", "Operating Budget",
     "Other"
 )
