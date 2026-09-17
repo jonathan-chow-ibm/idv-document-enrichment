@@ -41,7 +41,10 @@ public class WriteMetadataActivityTests
         Thresholds: new ConfidenceThresholds());
 
 
-    private static EnrichmentResult BuildResult(IReadOnlyDictionary<string, CategoryClassification>? fields, bool classifyOnly = false)
+    private static EnrichmentResult BuildResult(
+        IReadOnlyDictionary<string, CategoryClassification>? fields,
+        bool classifyOnly = false,
+        string? unrecognizedType = null)
     {
         var metadata = fields is null
             ? null
@@ -50,7 +53,8 @@ public class WriteMetadataActivityTests
             DocumentId: "doc-1",
             FileName: "sample.pdf",
             Extraction: new ExtractionResult("text", 1, 4, []),
-            TypeClassification: new TypeClassificationResult(DocumentType.LetterOfIntent, 0.9, "test"),
+            TypeClassification: new TypeClassificationResult(
+                DocumentType.LetterOfIntent, 0.9, "test", UnrecognizedType: unrecognizedType),
             Metadata: metadata,
             ProcessingMetrics: new ProcessingMetrics(),
             RoutingDecision: RoutingDecision.Write,
@@ -270,5 +274,23 @@ public class WriteMetadataActivityTests
 
         Assert.Equal(string.Empty, payload.AdditionalData!["PropertyAddress"]);
         Assert.Equal(string.Empty, payload.AdditionalData["County"]);
+    }
+
+    [Fact]
+    public void BuildFieldsPayload_UnrecognizedType_WritesAISuggestedType()
+    {
+        var payload = WriteMetadataActivity.BuildFieldsPayload(
+            BuildResult(fields: null, unrecognizedType: "Marketing Flyer"), BuildTaxonomy(), DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("Marketing Flyer", payload.AdditionalData!["AISuggestedType"]);
+    }
+
+    [Fact]
+    public void BuildFieldsPayload_NoUnrecognizedType_OmitsAISuggestedType()
+    {
+        var payload = WriteMetadataActivity.BuildFieldsPayload(
+            BuildResult(fields: null), BuildTaxonomy(), DateTimeOffset.UnixEpoch);
+
+        Assert.False(payload.AdditionalData!.ContainsKey("AISuggestedType"));
     }
 }

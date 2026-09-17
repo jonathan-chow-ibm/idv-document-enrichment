@@ -84,6 +84,13 @@ public sealed class WriteMetadataActivity(
             ["AIOriginalClassification"] = JsonSerializer.Serialize(new { result.TypeClassification, result.Metadata }),
         };
 
+        // Surface the model's own wording on the document itself (not just the batch report's
+        // Low-Confidence table) whenever the primary pick didn't match a taxonomy label.
+        if (!string.IsNullOrWhiteSpace(result.TypeClassification.UnrecognizedType))
+        {
+            data["AISuggestedType"] = result.TypeClassification.UnrecognizedType;
+        }
+
         // AIProcessingStatus doubles as Power Automate's re-trigger guard (see
         // docs/architecture/power-automate-integration.md) — "Classified"/"Under Review" tell the real
         // trigger flow this document was already handled and to skip it forever. A classify-only test

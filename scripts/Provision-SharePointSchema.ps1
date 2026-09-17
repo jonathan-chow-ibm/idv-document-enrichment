@@ -189,6 +189,10 @@ $columns = @(
     @{ name = "AIClassifiedDate"; displayName = "AI Classified Date"; group = "IDV Document Columns"; dateTime = @{} }
     @{ name = "SuggestedFields"; displayName = "Suggested Fields"; group = "IDV Document Columns"; text = @{ allowMultipleLines = $true } }
     @{ name = "AIOriginalClassification"; displayName = "AI Original Classification"; group = "IDV Document Columns"; text = @{ allowMultipleLines = $true } }
+    # Populated only when Agent 1's primary pick doesn't match a taxonomy label (see UnrecognizedType
+    # on TypeClassificationResult) -- the model's own wording, so a taxonomy gap is visible on the
+    # document itself rather than buried in the batch report's Low-Confidence table.
+    @{ name = "AISuggestedType"; displayName = "AI Suggested Type"; group = "IDV Document Columns"; text = @{} }
     @{ name = "SourceSystem"; displayName = "Source System"; group = "IDV Document Columns"; text = @{} }
 
     # -- Folder-derived (populate via folder default column values) --
@@ -363,7 +367,7 @@ foreach ($siteCol in $siteColumns) {
 $ctCommonCols = @(
     # AI operational
     "DocumentType", "AIConfidence", "AIProcessingStatus", "AIClassifiedDate",
-    "SuggestedFields", "AIOriginalClassification", "SourceSystem",
+    "SuggestedFields", "AIOriginalClassification", "AISuggestedType", "SourceSystem",
     # Folder-derived
     "State", "PropertyName", "ProjectName",
     # Universal
