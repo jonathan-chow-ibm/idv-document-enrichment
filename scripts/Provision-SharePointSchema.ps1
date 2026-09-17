@@ -448,6 +448,7 @@ foreach ($ctDef in $contentTypeDefs) {
     } elseif ($DryRun) {
         Write-Host "    [DRY RUN] Would create site CT '$ctName' (group: IDV Document Types)" -ForegroundColor DarkGray
         $ctId = $null
+        $ctCreated++    # counted so the summary reports planned work, not "0 created | 0 existing"
     } else {
         # "base" is the correct Graph API v1.0 property for the parent content type —
         # "parentContentType" is not a recognised field and caused "invalidCTParentId".
@@ -474,16 +475,21 @@ foreach ($ctDef in $contentTypeDefs) {
     }
 
     $colLinked = 0; $colAlreadyLinked = 0; $colMissing = 0
+    $definedColumnNames = @($columns.name)
     foreach ($colName in $ctDef.columns) {
         if ($existingCtColNames -contains $colName) { $colAlreadyLinked++; continue }
         $colId = $colIdByName[$colName]
         if (-not $colId) {
+            # On a dry run against an unprovisioned site the column legitimately doesn't exist yet:
+            # nothing was created, so $colIdByName is empty. A real run creates the columns first and
+            # re-reads the map, so this is not a finding. Only a column the script doesn't define at
+            # all is a genuine problem — warning on the rest buried 158 lines of noise in the output
+            # and left no way to spot a real one.
+            if ($DryRun -and $definedColumnNames -contains $colName) { $colLinked++; continue }
             Write-Host "    [WARN] Site column '$colName' not found — skipped" -ForegroundColor Yellow
             $colMissing++; continue
         }
-        if ($DryRun) {
-            Write-Host "    [DRY RUN] Would link column '$colName'" -ForegroundColor DarkGray; continue
-        }
+        if ($DryRun) { $colLinked++; continue }
         # columnLink.id IS the column's GUID (Graph API v1.0). @odata.id is not supported here.
         $refBody = @{ id = $colId } | ConvertTo-Json
         Invoke-MgGraphRequest -Method POST `
@@ -491,9 +497,10 @@ foreach ($ctDef in $contentTypeDefs) {
             -Body $refBody -ContentType "application/json" | Out-Null
         $colLinked++
     }
-    if (-not $DryRun -and $ctId) {
-        Write-Host "    Columns: $colLinked linked | $colAlreadyLinked already linked | $colMissing missing" -ForegroundColor DarkGray
-    }
+    # Printed on both paths: one summary line per content type beats one line per column, and a dry
+    # run that prints nothing here cannot be told apart from one that linked nothing.
+    $linkVerb = if ($DryRun) { "would link" } else { "linked" }
+    Write-Host "    Columns: $colLinked $linkVerb | $colAlreadyLinked already linked | $colMissing missing" -ForegroundColor $(if ($colMissing -gt 0) { "Yellow" } else { "DarkGray" })
 
     $ctResults += [PSCustomObject]@{ Name = $ctName; Id = $ctId }
 }
@@ -675,7 +682,7 @@ Write-Host "  Mode            : $(if ($DryRun) { 'DRY RUN — nothing was change
 Write-Host "  Columns         : $($columns.Count) defined | $created $(if ($DryRun) { 'to create' } else { 'created' }) | $skipped existing"
 Write-Host "  Choice sync     : $siteChoicesUpdated site + $listChoicesUpdated library column(s)$verb updated$(if ($PruneChoices) { ' (prune enabled)' })"
 Write-Host "  Column members  : $listColumnsAdded column(s)$verb added to library content types"
-Write-Host "  Content Types   : $($contentTypeDefs.Count) defined | $ctCreated created | $ctSkipped existing"
+Write-Host "  Content Types   : $($contentTypeDefs.Count) defined | $ctCreated $(if ($DryRun) { 'to create' } else { 'created' }) | $ctSkipped existing"
 Write-Host ""
 Write-Host "Site content type IDs:" -ForegroundColor Cyan
 foreach ($ct in $ctResults) {
