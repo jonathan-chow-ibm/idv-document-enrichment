@@ -84,7 +84,17 @@ param(
 $ErrorActionPreference = "Stop"
 
 # --- Connect ---
-Connect-MgGraph -Scopes "Sites.ReadWrite.All", "Sites.Manage.All"
+# Reuse an existing Graph session when the caller already has one with the scopes we need. An
+# unconditional Connect-MgGraph forces a second interactive prompt when this script runs inside an
+# already-authenticated session — with device-code sign-in that means the operator is asked to sign
+# in twice for one run.
+$requiredScopes = @("Sites.ReadWrite.All", "Sites.Manage.All")
+$graphContext = Get-MgContext
+if (-not $graphContext -or @($requiredScopes | Where-Object { $graphContext.Scopes -notcontains $_ }).Count -gt 0) {
+    Connect-MgGraph -Scopes $requiredScopes
+} else {
+    Write-Host "Using existing Graph session: $($graphContext.Account)" -ForegroundColor DarkGray
+}
 
 $site = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/sites/$SiteUrl"
 $siteId = $site.id
@@ -330,6 +340,7 @@ foreach ($col in $columns) {
 
                 if ($DryRun) {
                     Write-Host "  [DRY RUN] Would update choices: $($col.displayName)  ($($delta -join ' '))" -ForegroundColor DarkGray
+                    $siteChoicesUpdated++
                 } else {
                     Set-ColumnChoices -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/columns/$($exists.id)" `
                         -DeployedColumn $exists -Choices $converged
@@ -345,6 +356,7 @@ foreach ($col in $columns) {
     }
     if ($DryRun) {
         Write-Host "  [DRY RUN] Would create: $($col.displayName)" -ForegroundColor DarkGray
+        $created++
         continue
     }
     Invoke-MgGraphRequest -Method POST `
@@ -476,6 +488,7 @@ foreach ($ctDef in $contentTypeDefs) {
 Write-Host "`n=== Apply to Libraries ===" -ForegroundColor Cyan
 
 $listChoicesUpdated = 0
+$listColumnsAdded   = 0
 
 foreach ($targetList in $targetLists) {
     $docListId   = $targetList.id
@@ -495,8 +508,10 @@ foreach ($targetList in $targetLists) {
 
     # Fetch existing library CTs once per library. This is a read, so it runs in dry run too —
     # without it, dry run reports "would addCopy" for content types the library already has.
+    # $expand=columns costs nothing extra here and gives the column-membership pass below the data it
+    # needs without 5 more requests per library.
     $existingLibCTs = (Invoke-MgGraphRequest -Method GET `
-        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes").value
+        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes?`$expand=columns").value
     $existingLibCtNames = @($existingLibCTs | Where-Object { $_.name } | Select-Object -ExpandProperty name)
 
     foreach ($ctResult in $ctResults) {
@@ -520,14 +535,89 @@ foreach ($targetList in $targetLists) {
         }
     }
 
+    # --- Converge this library's COLUMN MEMBERSHIP ---
+    # Adding a column to a site content type does not reach libraries whose content types were
+    # already copied by addCopy. Verified 2026-09-17: after AISuggestedType was created and linked to
+    # all 5 site content types, 70 of 72 libraries still had no such list column — only the two that
+    # got a fresh addCopy in the same run did. ValidateSharePointSchemaActivity reads
+    # /drives/{driveId}/list/columns, so those 70 would fail a batch's pre-flight check while this
+    # script reported success.
+    #
+    # Two approaches do NOT work, so don't reach for them again:
+    #   * PATCH the site content type with propagateChanges=true — returns 200 and pushes nothing.
+    #   * POST .../lists/{id}/contentTypes/{ctId}/columnLinks — 404; columnLinks is site-scope only.
+    # What works is POSTing a columnDefinition to the LIST content type bound to the site column,
+    # which keeps the library's column tied to the site column rather than creating a local one.
+    $libColumns = (Invoke-MgGraphRequest -Method GET `
+        -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns").value
+
+    # Membership is compared PER CONTENT TYPE, never against the library's flat column list. A column
+    # can be present as a list column while still missing from most content types — that is exactly
+    # what a partial earlier fix leaves behind, and gating on list-column presence silently skips it.
+    # Scoped by NAME against $contentTypeDefs, deliberately not by content type `group`: the group
+    # property is not reliably returned alongside $expand=columns, and filtering on it silently
+    # matched nothing — the pass reported "0 added" while doing no work at all. The name lookup below
+    # is the real scope, so a content type we don't define (Document, Folder) falls out on its own.
+    if ($existingLibCtNames.Count -gt 0) {
+        $linked = 0
+        foreach ($libCt in @($existingLibCTs)) {
+            $wantedForCt = ($contentTypeDefs | Where-Object { $_.name -eq $libCt.name }).columns
+            if (-not $wantedForCt) { continue }
+
+            # Normally populated by $expand=columns above; fall back to a direct read if it wasn't,
+            # rather than treating "no data" as "nothing missing".
+            $ctCols = @($libCt.columns | Where-Object { $_.name } | Select-Object -ExpandProperty name)
+            $ctColsSource = 'expand'
+            if ($ctCols.Count -eq 0) {
+                $ctCols = @((Invoke-MgGraphRequest -Method GET `
+                    -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes/$($libCt.id)/columns").value |
+                    Where-Object { $_.name } | Select-Object -ExpandProperty name)
+                $ctColsSource = 'direct read'
+            }
+
+            $missingForCt = @($wantedForCt | Where-Object { $ctCols -notcontains $_ })
+
+            # Report what was inspected, not just what changed: a silent "0 added" cannot be told
+            # apart from "the comparison never ran", which is how the two earlier bugs here hid.
+            if ($DryRun) {
+                Write-Host ("    [CHECK] CT '{0}': {1} columns via {2}, {3} wanted, {4} missing" -f `
+                    $libCt.name, $ctCols.Count, $ctColsSource, @($wantedForCt).Count, $missingForCt.Count) -ForegroundColor DarkGray
+            }
+
+            foreach ($colName in $missingForCt) {
+                $siteColId = $colIdByName[$colName]
+                if (-not $siteColId) {
+                    Write-Host "    [WARN] '$colName' has no site column — cannot add to '$($libCt.name)'" -ForegroundColor Yellow
+                    continue
+                }
+                if ($DryRun) {
+                    Write-Host "    [DRY RUN] Would add '$colName' to CT '$($libCt.name)'" -ForegroundColor DarkGray
+                    $linked++      # counted so the summary reports planned work, not 0
+                    continue
+                }
+                $bindBody = @{
+                    'sourceColumn@odata.bind' = "https://graph.microsoft.com/v1.0/sites/$siteId/columns/$siteColId"
+                } | ConvertTo-Json
+                Invoke-MgGraphRequest -Method POST `
+                    -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/contentTypes/$($libCt.id)/columns" `
+                    -Body $bindBody -ContentType "application/json" | Out-Null
+                Write-Host "    [ADDED COLUMN] '$colName' -> CT '$($libCt.name)'" -ForegroundColor Green
+                $linked++
+            }
+        }
+        $listColumnsAdded += $linked
+        if (-not $DryRun -and $linked -gt 0) {
+            # Re-read so the choice pass below sees columns this pass just introduced.
+            $libColumns = (Invoke-MgGraphRequest -Method GET `
+                -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns").value
+        }
+    }
+
     # --- Converge this library's copy of each Choice column ---
     # The site-level patch above does not reach here (see the Choice convergence notes), and this is
     # the scope the pipeline actually writes to. Read-only when already in sync, so a second run
-    # costs one GET per library and no writes.
+    # costs no writes.
     if ($desiredChoices.Count -gt 0) {
-        $libColumns = (Invoke-MgGraphRequest -Method GET `
-            -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns").value
-
         $libUpdated = 0; $libInSync = 0; $libAbsent = 0
         foreach ($colName in $desiredChoices.Keys) {
             $libCol = $libColumns | Where-Object { $_.name -eq $colName }
@@ -544,6 +634,7 @@ foreach ($targetList in $targetLists) {
             $added = @($converged | Where-Object { @($libCol.choice.choices) -notcontains $_ })
             if ($DryRun) {
                 Write-Host "    [DRY RUN] Would update '$colName' choices ($($added.Count) added)" -ForegroundColor DarkGray
+                $libUpdated++
             } else {
                 Set-ColumnChoices -Uri "https://graph.microsoft.com/v1.0/sites/$siteId/lists/$docListId/columns/$($libCol.id)" `
                     -DeployedColumn $libCol -Choices $converged
@@ -562,8 +653,14 @@ foreach ($targetList in $targetLists) {
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Write-Host "  Site            : $($site.displayName)"
 Write-Host "  Libraries       : $(@($targetLists).Count) targeted ($(@($targetLists).displayName -join ', '))"
-Write-Host "  Columns         : $($columns.Count) defined | $created created | $skipped existing"
-Write-Host "  Choice sync     : $siteChoicesUpdated site column(s) updated | $listChoicesUpdated library column(s) updated$(if ($PruneChoices) { ' (prune enabled)' })"
+# In dry run the counters below tally PLANNED work. They are incremented on the dry-run branches on
+# purpose: a summary reading "0 added" under a screen full of "Would add" lines is worse than no
+# summary at all, and that discrepancy has already masked two real bugs in this pass.
+$verb = if ($DryRun) { "would be" } else { "" }
+Write-Host "  Mode            : $(if ($DryRun) { 'DRY RUN — nothing was changed' } else { 'APPLIED' })" -ForegroundColor $(if ($DryRun) { "Yellow" } else { "Green" })
+Write-Host "  Columns         : $($columns.Count) defined | $created $(if ($DryRun) { 'to create' } else { 'created' }) | $skipped existing"
+Write-Host "  Choice sync     : $siteChoicesUpdated site + $listChoicesUpdated library column(s) $verb updated$(if ($PruneChoices) { ' (prune enabled)' })"
+Write-Host "  Column members  : $listColumnsAdded column(s) $verb added to library content types"
 Write-Host "  Content Types   : $($contentTypeDefs.Count) defined | $ctCreated created | $ctSkipped existing"
 Write-Host ""
 Write-Host "Site content type IDs:" -ForegroundColor Cyan
