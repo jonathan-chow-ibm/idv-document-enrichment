@@ -43,9 +43,11 @@
     the Document form but still returned by the API, visible in any view including those columns,
     and still indexed by search (so they keep grounding Copilot). -ClearFields is what removes them.
 
-    The column set is derived from taxonomy.yaml rather than hardcoded, so it cannot drift from
-    the schema. It is the 6 AI operational columns plus metadata.content.{universal,property,
-    transaction,ownership} — exactly what WriteMetadataActivity.BuildFieldsPayload writes.
+    The column set is derived, not hardcoded, so it cannot drift from what the pipeline writes: the
+    operational columns come from ValidateSharePointSchemaActivity's RequiredColumns (which has a
+    guard test keeping it in sync with BuildFieldsPayload) plus DocumentType and AIProcessingStatus,
+    and the content columns come from taxonomy.yaml's metadata.content.{universal,property,
+    transaction,ownership}. Currently 7 + 26 = 33 columns, matching BuildFieldsPayload exactly.
     Deliberately excluded:
       * metadata.folder_derived (State, PropertyName, ProjectName) — these come from SharePoint
         folder default column values, not the AI, and must survive a reset.
@@ -122,6 +124,10 @@ param(
 
     [string]$TaxonomyPath,
 
+    # Source of the pipeline's literal operational columns. Defaults to
+    # src/IdvEnrichment.Functions/Activities/ValidateSharePointSchemaActivity.cs relative to this script.
+    [string]$ValidatorPath,
+
     [string[]]$ClearColumns,
 
     [string]$TargetContentTypeName = "Document",
@@ -142,13 +148,52 @@ $ctGroup = "IDV Document Types"
 if ($ClearColumns) { $ClearFields = $true }
 
 # --- Columns written by the pipeline ----------------------------------------------------------
-# The fixed operational columns set in WriteMetadataActivity.BuildFieldsPayload. AIProcessingStatus
-# is included deliberately: it is Power Automate's re-trigger guard, so a reset that leaves it as
-# "Classified" would cause the trigger flow to skip these documents forever on the re-run.
-$aiColumns = @(
-    "DocumentType", "AIConfidence", "AIProcessingStatus", "AIClassifiedDate",
-    "SuggestedFields", "AIOriginalClassification"
-)
+# The operational columns WriteMetadataActivity.BuildFieldsPayload writes as literal keys, read out
+# of ValidateSharePointSchemaActivity rather than duplicated here. That list carries a comment
+# telling maintainers to keep it in sync with BuildFieldsPayload and has a guard test enforcing it,
+# so deriving from it means this script inherits that guarantee instead of silently going stale —
+# which it already did once: AISuggestedType was added to the pipeline and a hardcoded copy here
+# kept clearing only the original six, leaving stale AI output behind on a "clean" reset.
+#
+# AIProcessingStatus is included deliberately: it is Power Automate's re-trigger guard, so a reset
+# that leaves it as "Classified" would make the trigger flow skip these documents forever.
+function Get-PipelineLiteralColumns {
+    param([Parameter(Mandatory)][string]$ValidatorPath)
+
+    # DocumentType is written unconditionally by BuildFieldsPayload but is absent from
+    # RequiredColumns, because the validator checks it separately against the enum's allowed values.
+    $fallback = @(
+        "DocumentType", "AIConfidence", "AIProcessingStatus", "AIClassifiedDate",
+        "SuggestedFields", "AIOriginalClassification", "AISuggestedType"
+    )
+
+    if (-not (Test-Path -LiteralPath $ValidatorPath)) {
+        Write-Host "  [WARN] $ValidatorPath not found — using the built-in operational column list." -ForegroundColor Yellow
+        return $fallback
+    }
+
+    $source = Get-Content -LiteralPath $ValidatorPath -Raw
+    $required = @()
+    if ($source -match '(?s)RequiredColumns\s*=\s*\[(.*?)\]\s*;') {
+        $required = @([regex]::Matches($Matches[1], '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+    }
+    $statusColumn = if ($source -match 'ProcessingStatusColumn\s*=\s*"([^"]+)"') { $Matches[1] } else { $null }
+
+    if ($required.Count -eq 0) {
+        Write-Host "  [WARN] Could not parse RequiredColumns from the validator — using the built-in list." -ForegroundColor Yellow
+        return $fallback
+    }
+
+    $result = @("DocumentType") + $required
+    if ($statusColumn) { $result += $statusColumn }
+    return @($result | Select-Object -Unique)
+}
+
+if (-not $ValidatorPath) {
+    $ValidatorPath = Join-Path (Split-Path -Parent $PSScriptRoot) `
+        "src/IdvEnrichment.Functions/Activities/ValidateSharePointSchemaActivity.cs"
+}
+$aiColumns = Get-PipelineLiteralColumns -ValidatorPath $ValidatorPath
 
 # Parse metadata.content.{universal,property,transaction,ownership} out of taxonomy.yaml. Reading
 # the taxonomy rather than hardcoding avoids adding a fourth place the field set has to be kept in
