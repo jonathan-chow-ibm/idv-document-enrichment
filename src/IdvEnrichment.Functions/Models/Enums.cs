@@ -42,6 +42,7 @@ public enum DocumentType
     [JsonStringEnumMemberName("Closing Statement")] ClosingStatement,
     [JsonStringEnumMemberName("Environmental Survey")] EnvironmentalSurvey,
     [JsonStringEnumMemberName("Geotechnical Report")] GeotechnicalReport,
+    [JsonStringEnumMemberName("CMT")] Cmt,
     [JsonStringEnumMemberName("Easement Document")] EasementDocument,
     // Budget Files
     [JsonStringEnumMemberName("Proforma")] Proforma,
