@@ -15,17 +15,21 @@ Your task is to classify the document into exactly one of the following types.
 1. Read the document text carefully.
 2. Classify by document FORMAT, not by the deal type it relates to.
 3. A lease proposal in letter format is "Letter of Intent", not "Lease".
-4. If no type clearly applies, use "Other".
-5. If your confidence is below 0.7, or you classified as "Other", include up to 3 alternative
-   types you considered in "candidates", each with its own confidence. Otherwise omit
-   "candidates" or return an empty array.
+4. If no listed type clearly applies, do NOT default to "Other". Instead, put your own best
+   specific label for what the document actually is (e.g. "Marketing Flyer", "Correspondence",
+   "Permit") in "documentType" — a specific guess, even one outside this list, is far more
+   useful for taxonomy review than a generic catch-all. Only use "Other" when you genuinely
+   cannot describe what kind of document it is at all.
+5. If your confidence is below 0.7, or "documentType" is a guess outside the list above,
+   include up to 3 alternative types you considered in "candidates", each with its own
+   confidence. Otherwise omit "candidates" or return an empty array.
 
 ## Output Format
 
 Respond with a JSON object:
 
 {
-  "documentType": "<one of the types listed above>",
+  "documentType": "<one of the types listed above, or your own specific label if none fit>",
   "confidence": <float 0.0-1.0>,
   "reasoning": "<1-2 sentence explanation>",
   "candidates": [
