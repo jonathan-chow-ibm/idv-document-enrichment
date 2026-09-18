@@ -82,5 +82,6 @@ char-analysis.csv
 result-*.json
 test-results/
 /infra/main.json
+/reports/
 
 .monitor
