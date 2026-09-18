@@ -87,9 +87,23 @@ Add `?showHistory=true&showHistoryOutput=true` to see per-activity output.
 ```bash
 curl -X POST https://<app>.azurewebsites.net/api/batch?code=<key> \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://<tenant>.sharepoint.com/sites/<site>/Documents/TX DFW Risinger"}'
+  -d '{"url":"https://<tenant>.sharepoint.com/sites/<site>/Documents/TX DFW Risinger",
+       "classifyOnly": true, "maxPages": 10}'
 ```
-Accepts a whole library or a single folder. Optional: `maxConcurrency`, `chunkSize`, `label`.
+Accepts a whole library or a single folder. Optional: `maxConcurrency`, `chunkSize`, `label`,
+`classifyOnly`, `maxPages`.
+- **`classifyOnly`** — skip Agent 2 (metadata extraction) entirely. Every document routes to Review
+  (there's no metadata to gate on), and `AIProcessingStatus` is deliberately left unset so these runs
+  don't pollute the real review queue. Useful for a fast type-distribution pass over a new library
+  before running full extraction.
+- **`maxPages`** — cap how many pages are read/analyzed per document, independent of `classifyOnly`.
+  Cuts Document Intelligence page cost and local-parsing time on long documents when only enough
+  content to classify is needed.
+
+Before enumerating the library, the batch validates that every Choice column the pipeline writes
+(`DocumentType` and the taxonomy's own allowed-value fields) still has every value it needs **on that
+library's own copy of the column** — see [runbook-configuration.md, gotcha #3a](runbook-configuration.md).
+A mismatch aborts the batch immediately, before any document is touched, naming the missing values.
 
 ---
 
@@ -114,51 +128,17 @@ Accepts a whole library or a single folder. Optional: `maxConcurrency`, `chunkSi
    az functionapp show -n <name> -g <rg> --query state
    ```
 
-4. **Grant Graph permissions** — requires Cloud Application Administrator or Global Admin in the client tenant:
-   ```powershell
-   ./scripts/Grant-GraphPermissions.ps1 -FunctionAppName <name> -ResourceGroupName <rg>
-   ```
+4. **Provision the SharePoint schema** — grant Graph permissions, list target libraries, dry-run, then
+   run for real. Full step-by-step, plus how to add a new document type or content type later, is in
+   [runbook-provisioning.md](runbook-provisioning.md).
 
-5. **List the target libraries** — read-only, no writes on any code path. Confirm what would be
-   provisioned before anything else:
-   ```powershell
-   ./scripts/Provision-SharePointSchema.ps1 `
-     -SiteUrl "tenant.sharepoint.com:/sites/SiteName" -ListLibraries
-   ```
-   Each library prints as `[target]` or `[skip] <reason>`. SharePoint system libraries are
-   refused on every code path (matched by server-relative URL, not display name); `Documents`,
-   `Template`, `Images` and `Pages` are skipped via the overridable `-ExcludeLibraries` default.
-   > On `idvllc.sharepoint.com:/sites/IDVProjects` this returns 73 libraries — one per project.
-   > `-DocumentLibraryName "Documents"` is the **wrong** target there: that library holds no
-   > project content. Use `-AllLibraries`.
+5. **Test with one document** via the test endpoint. Confirm `routingDecision` and `drawingClassification` look correct.
 
-6. **Dry-run provisioning** — review the output before making any changes. Add any non-project
-   libraries `-ListLibraries` surfaced to `-ExcludeLibraries`:
-   ```powershell
-   ./scripts/Provision-SharePointSchema.ps1 `
-     -SiteUrl "tenant.sharepoint.com:/sites/SiteName" -AllLibraries -DryRun `
-     -ExcludeLibraries 'Documents','Template','Dead Deals','IDV Property Stat Sheet'
-   ```
+6. **Set `BatchMaxConcurrency`** — quota is no longer the binding constraint (see Throughput and quota
+   below); concurrency **25** is validated in production for full extraction runs at 53.4 docs/min with
+   zero 429s. For classify-only runs, use **80** under ~2,000 documents, **40** above that — see below.
 
-7. **Run without `-DryRun`** once the dry-run output looks correct. A full run over 69 libraries
-   makes ~420 Graph writes (one `contentTypesEnabled` PATCH plus five `addCopy` POSTs each) and
-   may hit 429 throttling. The script is idempotent — columns, site content types and library
-   content types are all skipped when already present — so **re-run it** after a throttle or
-   transient failure rather than trying to work out how far it got.
-
-8. **Create the "Under Review" filtered library view** — filter on `AIProcessingStatus = "Under Review"` (ADR-006 — inline review, no separate list).
-
-9. **Set folder default column values** for `State`, `PropertyName`, `ProjectName` on each project folder using `Set-PnPDefaultColumnValues` (see configuration runbook).
-   > ⚠️ Folder defaults are **not retroactive** — existing documents need a back-fill.
-
-10. **Map columns to managed properties** in the SharePoint search schema — tenant-admin task, required for Microsoft 365 Copilot grounding.
-
-11. **Test with one document** via the test endpoint. Confirm `routingDecision` and `drawingClassification` look correct.
-
-12. **Set `BatchMaxConcurrency`** — quota is no longer the binding constraint (see Throughput table);
-    concurrency **25** is validated in production at 53.4 docs/min with zero 429s.
-
-13. **Start the first small batch** (~500 documents, one project folder) and monitor the review queue before scaling up.
+7. **Start the first small batch** (~500 documents, one project folder) and monitor the review queue before scaling up.
 
 ---
 
@@ -210,8 +190,27 @@ Measured per document: Agent 1 ≈ 2,280 · Agent 2 ≈ 3,430 · vision ≈ 2,95
 
 **Current IDV quota:** `gpt-4.1-mini` **5,000,000 TPM** (GlobalStandard) · `gpt-4.1` **1,000,000 TPM**
 (GlobalStandard). Quota is no longer the binding constraint on throughput — Durable Functions concurrency
-settings are. Concurrency **25** is validated in production (53.4 docs/min, zero 429s across two batch
-runs totalling ~4,470 documents); headroom above 25 likely exists but hasn't been measured.
+settings are. Concurrency **25** is validated in production for **full extraction** runs (53.4 docs/min,
+zero 429s across two batch runs totalling ~4,470 documents); headroom above 25 for full runs hasn't been
+measured.
+
+For **classify-only** runs (`classifyOnly: true` — no Agent 2 extraction load, so lower tokens/document),
+concurrency **80** held up with zero 429s on three batches (~5,700 documents total, 2026-09-17), but the
+fourth and largest (5,864 documents, 2026-09-18) hit real throttling: **24 documents failed with HTTP
+429 on the file *download* itself** — SharePoint/Graph rate-limiting our own download requests, not
+Azure OpenAI TPM. That's a different bottleneck than the sizing formula above accounts for, and it only
+showed up once the batch got large enough. It's also not validated for full extraction at all — Agent
+2's ~3,430 tokens/document aren't in play on a classify-only run, so the TPM headroom is very different.
+
+**Current guidance (2026-09-18):** use **80** for classify-only batches under ~2,000 documents (holds
+clean, matches what's actually been measured); dial back to **40** for anything larger, until the
+download step has its own retry/backoff. 40 isn't independently validated against this specific
+bottleneck either — it's a conservative halving pending more data, not a measured ceiling. Re-measure
+before trusting either number again if the download-retry work below gets done.
+
+Part of why higher concurrency is safe *at all*: `ChunkOrchestrator` uses a sliding window, not
+fixed-size groups — a single wedged or slow document only occupies its own concurrency slot (bounded by
+a 20-minute per-document timeout) rather than blocking the rest of its chunk.
 
 Also available and unused: **~50M TPM of Global Batch quota** on gpt-4.1 (50% cheaper, 24h turnaround) —
 would require restructuring the AI calls to the async Batch API.
@@ -310,6 +309,13 @@ are not yet implemented.
 **Application Insights** — the `DocumentEnriched` custom event carries documentType, routingDecision,
 type confidence, and per-field confidence scores.
 
+⚠️ **`customEvents` are sampled and not authoritative at scale.** For at least one production batch,
+`DocumentEnriched` events were lost **entirely** — zero rows survived for that batchId, while another
+batch's events came through complete. Treat the KQL queries below as directional for spot-checking, not
+as a reliable way to account for every document in a large batch. The Durable Task instance store
+(`GET .../runtime/webhooks/durabletask/instances?instanceIdPrefix={batchId}&...`) is the source that
+actually covers every document, if a full per-document accounting is needed.
+
 ### Useful KQL queries
 
 ```kusto
@@ -371,6 +377,7 @@ customEvents
 | 429 / slow batch | Concurrency above quota |
 | Enum deserialization error on classify | `taxonomy.yaml` label missing from `DocumentType` enum |
 | Durable orchestration stuck | Check Azurite is running (local) / storage RBAC (Azure) |
+| Batch fails immediately, "SharePoint schema validation failed" | Named Choice column(s) missing a value on **this library's own copy** — re-run `Provision-SharePointSchema.ps1` (see [runbook-configuration.md, gotcha #3a](runbook-configuration.md)) |
 
 ---
 
