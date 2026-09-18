@@ -9,6 +9,7 @@ AI-powered document classification, tagging, and indexing pipeline for SharePoin
 > - **[Configuration runbook](docs/runbook-configuration.md)** — change the taxonomy, fields, thresholds
 > - **[Provisioning runbook](docs/runbook-provisioning.md)** — SharePoint schema setup, add a document type or content type
 > - **[Failures runbook](docs/runbook-failures.md)** — why a document didn't process cleanly, and what can be done about it
+> - **[Metadata runbook](docs/runbook-metadata.md)** — every extracted field, its source, group, and confidence threshold
 
 ## Overview
 
@@ -46,6 +47,7 @@ idv-document-enrichment/
 │   ├── runbook-configuration.md # change taxonomy / fields / thresholds
 │   ├── runbook-provisioning.md # SharePoint schema setup, add a document type or content type
 │   ├── runbook-failures.md    # why a document failed, and possible fixes
+│   ├── runbook-metadata.md    # every extracted field, source, group, confidence threshold
 │   ├── architecture/          # Deep-dive design docs (partially stale)
 │   ├── decisions/             # ADRs 001-008
 │   ├── taxonomy/              # taxonomy.yaml (v4) + client-facing docs

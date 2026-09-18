@@ -36,6 +36,10 @@ of these were learned the hard way and will silently waste your time otherwise.
 
 ## Common tasks
 
+For the full current field list (all four `content` groups, their SharePoint columns, and confidence
+thresholds), see [runbook-metadata.md](runbook-metadata.md) — this section is the how-to-change-it, that
+one is the reference.
+
 ### Add a metadata field (YAML + provisioning only)
 
 1. **`taxonomy.yaml`** — add under the right `metadata.content.*` group:

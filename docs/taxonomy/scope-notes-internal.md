@@ -2,8 +2,9 @@
 
 Technical backing for the two client-facing docs ([content-types-client-review.md](content-types-client-review.md)
 and [capability-summary-client.md](capability-summary-client.md)). Audience: delivery team. Status: taxonomy
-[taxonomy.yaml](taxonomy.yaml) is **Pending SME review**; pipeline is wired to v4 and builds clean, but is
-**not yet validated against live Azure OpenAI / Document Intelligence.**
+[taxonomy.yaml](taxonomy.yaml) is **Pending SME review**; pipeline is wired to v4 and, as of 2026-09-18,
+has run against live Azure OpenAI and Document Intelligence across four production batches
+(~10,600 documents total) — see [runbook-failures.md](../runbook-failures.md) for what that surfaced.
 
 ---
 
