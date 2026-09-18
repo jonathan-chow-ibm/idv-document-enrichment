@@ -379,15 +379,14 @@ customEvents
 | Durable orchestration stuck | Check Azurite is running (local) / storage RBAC (Azure) |
 | Batch fails immediately, "SharePoint schema validation failed" | Named Choice column(s) missing a value on **this library's own copy** — re-run `Provision-SharePointSchema.ps1` (see [runbook-configuration.md, gotcha #3a](runbook-configuration.md)) |
 
+Individual document failures within an otherwise-healthy batch (not the whole batch aborting) are their
+own category — see [runbook-failures.md](runbook-failures.md) for the known signatures (Document
+Intelligence download failures, SharePoint throttling, Azure OpenAI content filtering) and what, if
+anything, can be done about each.
+
 ---
 
 ## Known limitations
 
-- **Some file types can't be read**: `.doc` (legacy), `.msg`, `.dwg`, `.mpp`, `.zip` → route to review.
-  `.pptx` *is* supported — it's converted to PDF before extraction — but image-heavy decks can still fail
-  born-digital detection after conversion and route to Document Intelligence, and chart/diagram content
-  may extract thinly.
-- **Multi-page drawings**: only page 1 is rendered for vision, so a permit set yields cover-sheet metadata
-- **Spreadsheets >50 MB** are rejected; large workbooks are truncated to a 24K budget with priority sheets favoured
-- **Pro forma financial metrics** (IRR, yield, NOI) are **not** extracted — deferred; models vary too much across projects
-- **Cost reporting** shows $0.00 (no pricing constants, and no page count for the DI line)
+Moved to [runbook-failures.md](runbook-failures.md), alongside the document-level failure modes it sits
+next to naturally (unsupported file types, size caps, drawing/pro-forma extraction gaps, cost reporting).
