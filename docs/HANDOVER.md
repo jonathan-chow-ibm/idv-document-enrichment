@@ -87,7 +87,7 @@ Partitions=4`. Nothing has been processed for the client yet.
 |---|---|
 | **README.md** | Described a `tests/` directory that **does not exist**. Corrected, but verify before trusting. |
 | **architecture/human-review-queue.md** | **Superseded by ADR-006.** Describes a separate review list + Power Apps form that was never built. The implemented design is an inline filtered library view. |
-| **architecture/pipeline-design.md**, **durable-functions-orchestration.md**, **prompt-engineering-strategy.md**, **power-automate-integration.md** | Last substantively updated 12–19 Aug, **before** the v4 taxonomy, the drawing vision path, and the folder-derived metadata model. Architecture is broadly right; specifics are out of date. |
+| **architecture/durable-functions-orchestration.md**, **prompt-engineering-strategy.md**, **power-automate-integration.md** | Last substantively updated 12–19 Aug, **before** the v4 taxonomy, the drawing vision path, and the folder-derived metadata model. Architecture is broadly right; specifics are out of date. |
 | **docs/tasks.md** | Phase plan from Phase 0. Not maintained. |
 
 ### Decisions made but NOT yet recorded as ADRs

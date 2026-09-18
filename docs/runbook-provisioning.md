@@ -245,6 +245,31 @@ content type, since nothing else will surface the mistake.
 
 ---
 
+## Tearing down
+
+To roll back a **batch's writes** (content type + field values on documents) without touching the
+schema, use `Reset-ContentTypes.ps1` — see
+[runbook-operations.md, "Rolling back a batch"](runbook-operations.md#rolling-back-a-batch).
+
+To remove the **provisioned schema itself** — the columns and content types
+`Provision-SharePointSchema.ps1` created — use `scripts/Remove-SharePointSchema.ps1`:
+
+```powershell
+.\scripts\Remove-SharePointSchema.ps1 -SiteUrl "tenant.sharepoint.com:/sites/SiteName" -DocumentLibraryName "Test"
+```
+
+Deletion order matters and the script follows it: (1) remove the IDV content types from the library,
+(2) delete any orphan list-level columns from old broken runs, (3) delete the site-level content types,
+(4) delete the site columns. **SharePoint refuses to delete a content type while any item still
+references it** — run `Reset-ContentTypes.ps1 -OnlyIdvContentTypes` first if documents in the target
+library have already been processed, or this will fail partway through step 1.
+
+This is a full teardown, not a partial edit — there's no "remove one column" mode. Use it to reset a
+site before re-provisioning from scratch, not for routine schema changes (those go through the converge
+pass in `Provision-SharePointSchema.ps1` itself, per the gotchas above).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause |

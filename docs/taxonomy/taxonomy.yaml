@@ -1,6 +1,6 @@
 version: "4.0"
-last_updated: "2026-08-21"
-approved_by: "Pending SME review"
+last_updated: "2026-09-18"
+approved_by: "Pending SME review"  # still a work in progress -- not yet signed off by the client
 
 # ---------------------------------------------------------------------------
 # Built directly from the client "Meta Data Request.xlsx" — their most-used file

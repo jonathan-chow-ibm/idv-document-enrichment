@@ -300,6 +300,39 @@ Or call `IDurableClient.PurgeInstanceHistoryAsync(...)` from a maintenance funct
 
 ---
 
+## Rolling back a batch
+
+To undo what a batch wrote — discard a bad run and re-process the same library, or fix documents that
+got typed wrong — use `scripts/Reset-ContentTypes.ps1`. It resets documents back to the library's default
+content type and, with `-ClearFields`, nulls out the metadata values the pipeline wrote, producing an
+as-uploaded state. **It never touches the provisioned schema** (columns/content types stay in place) —
+that's what [runbook-provisioning.md, "Tearing down"](runbook-provisioning.md#tearing-down) is for.
+
+```powershell
+# Always dry-run first
+.\scripts\Reset-ContentTypes.ps1 -SiteUrl "tenant.sharepoint.com:/sites/SiteName" -AllLibraries -ClearFields -DryRun
+
+# Smoke test on a handful of documents
+.\scripts\Reset-ContentTypes.ps1 -SiteUrl "..." -DocumentLibraryName "TX HOU 7300 Thompson" -ClearFields -Limit 5
+
+# Full rollback, ready for a pipeline re-run
+.\scripts\Reset-ContentTypes.ps1 -SiteUrl "..." -AllLibraries -ClearFields `
+    -FailureReportPath ./reports/ct-reset-failures.csv
+```
+
+Folder-derived columns (`State`, `PropertyName`, `ProjectName`) and system columns (`Title`, `Author`,
+`Modified`, `SourceSystem`) are deliberately never touched — the folder-derived ones must survive a
+reset, and `Author`/`Modified` are read-only built-ins that would 400 the whole PATCH if included. The
+column set `-ClearFields` clears is derived from `ValidateSharePointSchemaActivity`'s required-columns
+list plus `taxonomy.yaml`'s content fields, not hardcoded, so it can't drift from what
+`WriteMetadataActivity.BuildFieldsPayload` actually writes.
+
+Without `-ClearFields`, the script only resets the content type (useful when a batch typed documents
+into the wrong content type but the field values themselves are fine — or as prep before a full schema
+teardown, since SharePoint refuses to delete a content type while items still reference it).
+
+---
+
 ## Monitoring & troubleshooting
 
 **Batch reports** land in the `BatchReportsContainerUrl` blob container as `report.json` + `report.html`
